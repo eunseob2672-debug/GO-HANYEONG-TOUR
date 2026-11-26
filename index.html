@@ -1,0 +1,1838 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>여수 한영대학교 3D 탐방 & 부수기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+KR:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+      font-family: 'Noto Sans KR', 'Inter', sans-serif;
+      background: linear-gradient(180deg, #b8dcf8 0%, #e0f0ff 100%);
+      touch-action: none;
+    }
+    #canvas-container { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; }
+    canvas { display: block; width: 100%; height: 100%; outline: none; }
+    .floating-label {
+      position: fixed; top: 0; left: 0; z-index: 12; pointer-events: auto; cursor: pointer;
+      user-select: none; transition: opacity 0.2s ease; will-change: transform;
+    }
+    .floating-label:hover { z-index: 18; }
+    .context-label {
+      position: fixed; top: 0; left: 0; z-index: 8; pointer-events: none;
+      user-select: none; transition: opacity 0.2s ease; will-change: transform;
+    }
+    .hp-overlay {
+      position: fixed; top: 0; left: 0; z-index: 15; pointer-events: none;
+      user-select: none; will-change: transform;
+    }
+    @keyframes comboPop {
+      0% { transform: scale(0.8); }
+      50% { transform: scale(1.22); }
+      100% { transform: scale(1); }
+    }
+    .combo-pop { animation: comboPop 0.22s ease-out; }
+    .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+    .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.45); border-radius: 9999px; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="select-none">
+  <div id="canvas-container"></div>
+  <div id="labels-container" class="pointer-events-none fixed inset-0 z-10 overflow-hidden"></div>
+  <div id="hp-container" class="pointer-events-none fixed inset-0 z-15 overflow-hidden"></div>
+
+  <!-- 상단 헤더 -->
+  <header class="fixed top-0 left-0 right-0 z-20 p-2.5 sm:p-4 pointer-events-none">
+    <div class="max-w-6xl mx-auto flex flex-col gap-2">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div class="pointer-events-auto flex items-center gap-2 bg-white/90 backdrop-blur-md px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl shadow-lg border border-white/75">
+          <span class="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-blue-900 text-white text-sm sm:text-base shadow-sm">🏫</span>
+          <div>
+            <h1 class="text-xs sm:text-base font-extrabold text-slate-800 leading-tight tracking-tight">여수 한영대 3D</h1>
+            <p class="text-[10px] sm:text-[11px] text-slate-500 font-medium hidden sm:block">캠퍼스 탐방 & 스트레스 해소 부수기</p>
+          </div>
+        </div>
+
+        <div class="pointer-events-auto flex items-center bg-slate-900/80 backdrop-blur-md p-1 rounded-2xl shadow-lg border border-white/20">
+          <button id="mode-tour" type="button" class="px-3 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all bg-white text-blue-900 shadow-sm">🏫 탐방 모드</button>
+          <button id="mode-smash" type="button" class="px-3 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all text-white/80 hover:text-white">💥 부수기 모드</button>
+        </div>
+
+        <div class="pointer-events-auto flex items-center gap-1.5">
+          <button id="btn-sound" type="button" title="사운드 켜기/끄기" class="hidden flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 bg-white/90 hover:bg-white active:scale-95 backdrop-blur-md rounded-2xl shadow-lg border border-white/75 text-base transition">🔊</button>
+          <button id="btn-theme" type="button" class="flex items-center gap-1 bg-white/90 hover:bg-white active:scale-95 backdrop-blur-md px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl shadow-lg border border-white/75 text-xs sm:text-sm font-bold text-slate-700 transition">
+            <span id="theme-icon">☀️</span>
+            <span id="theme-text" class="hidden sm:inline">낮 모드</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 부수기 모드 HUD -->
+      <div id="smash-hud" class="hidden pointer-events-auto max-w-2xl mx-auto w-full bg-slate-900/85 backdrop-blur-xl text-white px-3.5 py-2.5 rounded-2xl shadow-xl border border-white/15 flex items-center justify-between gap-3">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between text-[11px] sm:text-xs font-bold mb-1">
+            <span class="text-rose-300 flex items-center gap-1">🔥 캠퍼스 파괴율</span>
+            <span id="destruction-percent" class="text-white font-extrabold">0%</span>
+          </div>
+          <div class="w-full h-2.5 bg-slate-700/90 rounded-full overflow-hidden">
+            <div id="destruction-bar" class="h-full w-0 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-600 transition-all duration-300 rounded-full"></div>
+          </div>
+        </div>
+        <div id="combo-box" class="flex-shrink-0 px-2.5 py-1 rounded-xl bg-white/10 border border-white/15 text-center min-w-[68px]">
+          <div class="text-[9px] text-amber-300 font-bold uppercase tracking-wider">COMBO</div>
+          <div id="combo-count" class="text-sm sm:text-base font-black text-amber-400 leading-none">0</div>
+        </div>
+        <button id="btn-restore" type="button" class="flex-shrink-0 flex items-center gap-1 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-white px-3 py-2 rounded-xl text-xs sm:text-sm font-extrabold shadow-md transition">
+          <span>🔄</span><span>학교 복구</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 하단 도크 1: 탐방 모드 -->
+  <nav id="tour-nav" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 w-[95%] sm:w-auto max-w-3xl pointer-events-auto transition-all duration-300">
+    <div class="flex items-center justify-start sm:justify-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar bg-white/88 backdrop-blur-xl px-2.5 py-2 rounded-full shadow-xl border border-white/80" id="quick-nav"></div>
+  </nav>
+
+  <!-- 하단 도크 2: 부수기 모드 -->
+  <nav id="smash-nav" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-20 w-[95%] sm:w-auto max-w-2xl pointer-events-auto transition-all duration-300">
+    <div class="flex items-center justify-center gap-1.5 sm:gap-2.5 bg-slate-900/90 backdrop-blur-xl px-3 py-2 rounded-3xl shadow-2xl border border-white/15">
+      <button data-weapon="meteor" type="button" class="weapon-btn flex flex-col sm:flex-row items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-2 rounded-2xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow-lg ring-2 ring-amber-300"><span class="text-base sm:text-lg">☄️</span><span>운석 낙하</span></button>
+      <button data-weapon="laser" type="button" class="weapon-btn flex flex-col sm:flex-row items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-2 rounded-2xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 bg-white/10 hover:bg-white/20 text-white/90"><span class="text-base sm:text-lg">⚡</span><span>번개 강타</span></button>
+      <button data-weapon="bomb" type="button" class="weapon-btn flex flex-col sm:flex-row items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-2 rounded-2xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 bg-white/10 hover:bg-white/20 text-white/90"><span class="text-base sm:text-lg">💣</span><span>폭탄 투하</span></button>
+      <button data-weapon="quake" type="button" class="weapon-btn flex flex-col sm:flex-row items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-2 rounded-2xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 bg-amber-500/95 hover:bg-amber-400 text-slate-950 shadow-md"><span class="text-base sm:text-lg">🌪️</span><span>대지진</span></button>
+    </div>
+    <p class="text-center text-[11px] font-bold text-slate-800/85 bg-white/80 backdrop-blur-sm rounded-full px-3 py-0.5 mt-1.5 w-fit mx-auto shadow-sm">
+      건물·단상·나무·가로등·바닥 어디든 클릭하면 부서지고 크랙이 생깁니다!
+    </p>
+  </nav>
+
+  <!-- 100% 완파 오버레이 -->
+  <div id="victory-overlay" class="hidden fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center border border-slate-100">
+      <div class="text-5xl mb-3">🎉</div>
+      <h2 class="text-xl sm:text-2xl font-black text-slate-900 mb-1.5">한영대 완전 정복!</h2>
+      <p class="text-sm text-slate-600 font-medium mb-5">스트레스 해소 완료! 캠퍼스 모든 건물이 무너졌습니다.</p>
+      <div class="flex flex-col gap-2">
+        <button id="btn-victory-restore" type="button" class="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 active:scale-95 text-white font-extrabold text-sm shadow-lg transition">🔄 다시 복구하기</button>
+        <button id="btn-victory-close" type="button" class="w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition">폐허 구경하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 탐방 모드 상세 정보 패널 -->
+  <aside id="info-panel" class="fixed z-30 bottom-0 left-0 right-0 md:top-20 md:right-5 md:bottom-20 md:left-auto md:w-[400px] bg-white/95 backdrop-blur-xl rounded-t-3xl md:rounded-3xl shadow-2xl border border-slate-200/80 flex flex-col max-h-[62vh] md:max-h-none transform translate-y-full md:translate-y-0 md:translate-x-[120%] opacity-0 pointer-events-none transition-all duration-300 ease-out">
+    <div class="md:hidden flex justify-center pt-2.5 pb-1"><div class="w-10 h-1.5 rounded-full bg-slate-300"></div></div>
+    <div class="px-5 pt-3 pb-3.5 md:pt-5 border-b border-slate-100 flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2 flex-wrap mb-1">
+          <span id="panel-badge" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">핵심 구역</span>
+          <span id="panel-walk" class="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500"></span>
+        </div>
+        <h2 id="panel-title" class="text-lg sm:text-xl font-extrabold text-slate-900 truncate">본관</h2>
+        <p id="panel-desc" class="text-xs sm:text-sm text-slate-600 mt-0.5 leading-snug"></p>
+      </div>
+      <button id="btn-close-panel" type="button" aria-label="닫기" class="flex-shrink-0 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 active:scale-95 flex items-center justify-center text-slate-500 font-bold transition">✕</button>
+    </div>
+    <div id="panel-landmarks" class="px-5 py-2.5 bg-blue-50/60 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar"></div>
+    <div class="px-5 pt-3 pb-2 bg-slate-50/70 border-b border-slate-100"><div id="floor-tabs" class="flex items-center gap-1.5 overflow-x-auto no-scrollbar"></div></div>
+    <div id="floor-content" class="flex-1 overflow-y-auto custom-scroll px-5 py-4 space-y-4"></div>
+  </aside>
+
+  <script>
+    // =========================================================================
+    // 1. 캠퍼스 실제 층별 시설 데이터
+    // =========================================================================
+    const CAMPUS_DATA = {
+      main: {
+        id: 'main', name: '본관', shortName: '본관', emoji: '🏛️',
+        badge: '캠퍼스 중심 · 1~5층', badgeColor: 'bg-slate-800 text-white',
+        walkTime: '장군산길 로터리 진입 후 바로 앞',
+        summary: '한스빈, 디지털싱킹라운지, 행정 부서, 전공 강의실과 5층 도서관이 모여 있는 한영대학교의 중심 건물입니다.',
+        landmarks: ['☕ 한스빈', '💻 디지털싱킹라운지', '🏋️ 헬스장', '📚 5층 도서관'],
+        cameraPos: [-10, 18, -32], lookAt: [-8, 5, -4], labelPos: [-10, 15.5, -4], ringPos: [-10, 0.25, -4],
+        floors: [
+          { label: '1층', facilities: ['한스빈', '디지털싱킹라운지', '보건실', '헬스장', '샤워실'] },
+          { label: '2층', facilities: ['교무처', '사무처', '산학처', '기획처', '입학처'] },
+          { label: '3층', facilities: ['사회융합관광경영학과 강의실', '학생상담혁신센터', '교수님 연구실'] },
+          { label: '4층', facilities: ['친환경건축인테리어 전공강의실', '사회복지전공강의실', '사회융합관광경영전공 강의실', '식품영양학과 강의실'] },
+          { label: '5층', facilities: ['도서관'] }
+        ]
+      },
+      engineering: {
+        id: 'engineering', name: '공학관', shortName: '공학관', emoji: '⚙️',
+        badge: '남동쪽 언덕 · 1~5층', badgeColor: 'bg-purple-100 text-purple-900',
+        walkTime: '중앙 주차장에서 컬러 스탠드 계단 도보 1분',
+        summary: '구내식당과 폴리매스라운지, 화공·석유화학·이차전지·제철케미칼·식품영양 실습실 및 강의실이 있는 5층 건물입니다.',
+        landmarks: ['🍽️ 구내식당', '🤖 AI메이커스페이스실', '🔋 이차전지 실습실', '🌈 컬러 스탠드'],
+        cameraPos: [26, 20, -24], lookAt: [26, 7.5, 4], labelPos: [26, 19.5, 5], ringPos: [26, 3.35, 5],
+        floors: [
+          { label: '1층', facilities: ['폴리매스라운지', '구내식당', '화학창의공작소', '플랜트창의공작소'] },
+          { label: '2층', facilities: ['에너지실습실', '교수연구실', '식품영양학과 실습실', '어린이사회복지급식관리지원센터'] },
+          { label: '3층', facilities: ['화공플랜트산업전공 장치공무실습실', '석유화학공정전공 화학공정실습실', '이차전지 실습실', '화공산업공학전공 실습실', '제철케미칼전공실습실', '식품영양학과 바리스타 실습실', '교수연구실'] },
+          { label: '4층', facilities: ['제철케미칼전공강의실', '교수연구실', 'AI메이커스페이스실'] },
+          { label: '5층', facilities: ['화공산업공학전공 강의실', '석유화학공정전공 강의실'] }
+        ]
+      },
+      health: {
+        id: 'health', name: '보건관', shortName: '보건관', emoji: '🩺',
+        badge: '북동쪽 · 1~3층', badgeColor: 'bg-teal-100 text-teal-900',
+        walkTime: '중앙 주차장 동쪽 끝에서 도보 1분',
+        summary: '1층 실습실, 2층 컴퓨터실 및 학년별 강의실, 3층 조교실·교수님실과 1~4학년 수업실이 있는 3층 건물입니다.',
+        landmarks: ['🩺 1층 실습실', '💻 2층 컴퓨터실', '👩‍🏫 3층 조교실·교수님실'],
+        cameraPos: [30, 18, -36], lookAt: [48, 6, -16], labelPos: [48, 15.5, -16], ringPos: [48, 0.25, -16],
+        floors: [
+          { label: '1층', facilities: ['실습실'] },
+          { label: '2층', facilities: ['컴퓨터실', '2·3·4학년 강의실'] },
+          { label: '3층', facilities: ['2·3·4학년 강의실', '조교실', '교수님실', '1학년 수업실'] }
+        ]
+      },
+      parking: {
+        id: 'parking', name: '중앙 주차장', shortName: '주차장', emoji: '🚌',
+        badge: '캠퍼스 중앙 광장', badgeColor: 'bg-amber-100 text-amber-800',
+        walkTime: '본관·공학관·보건관 연결 중심',
+        summary: '본관 동쪽이자 공학관 바로 북쪽에 자리한 중앙 주차장입니다. 한영대 스쿨버스 정차장과 목재 파고라 쉼터가 있습니다.',
+        landmarks: ['🚌 스쿨버스 정차장', '🅿️ 중앙 주차 구획', '🪵 목재 파고라 쉼터'],
+        cameraPos: [23, 24, -38], lookAt: [23, 1, -11], labelPos: [23, 6.2, -12], ringPos: [23, 0.25, -12],
+        floors: [
+          { label: '주차장', facilities: ['스쿨버스 정차장', '중앙 주차 구획', '목재 파고라 쉼터'] }
+        ]
+      }
+    };
+
+    const CONTEXT_LABELS = [
+      { text: '운동장', pos: [-46, 3.5, 4] },
+      { text: '봉헌관', pos: [-46, 8.5, -15] },
+      { text: 'CU', pos: [7.5, 7.2, -4] },
+      { text: '한영고', pos: [-10, 9.5, 16] }
+    ];
+
+    const CAMERA_PRESETS = {
+      all: { pos: [4, 48, -74], lookAt: [4, 1, -2] },
+      map: { pos: [2, 118, 0.5], lookAt: [2, 0, 0] }
+    };
+
+    // =========================================================================
+    // 2. Web Audio API 합성 사운드 엔진
+    // =========================================================================
+    const SoundFX = {
+      ctx: null, muted: false,
+      init() {
+        if (!this.ctx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (AC) this.ctx = new AC();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+      },
+      playExplosion(intensity = 1.0) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(110 * intensity, now);
+        osc.frequency.exponentialRampToValueAtTime(24, now + 0.42);
+        gain.gain.setValueAtTime(0.28 * intensity, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.46);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(now); osc.stop(now + 0.48);
+
+        const len = Math.floor(this.ctx.sampleRate * 0.4);
+        const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.35));
+        const noise = this.ctx.createBufferSource(); noise.buffer = buf;
+        const filter = this.ctx.createBiquadFilter(); filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(880, now); filter.frequency.exponentialRampToValueAtTime(120, now + 0.4);
+        const nGain = this.ctx.createGain();
+        nGain.gain.setValueAtTime(0.3 * intensity, now); nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+        noise.connect(filter); filter.connect(nGain); nGain.connect(this.ctx.destination);
+        noise.start(now);
+      },
+      playLaser() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(1150, now); osc.frequency.exponentialRampToValueAtTime(140, now + 0.35);
+        gain.gain.setValueAtTime(0.22, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(now); osc.stop(now + 0.4);
+      },
+      playQuake() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const len = Math.floor(this.ctx.sampleRate * 0.95);
+        const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.sin((i / len) * Math.PI);
+        const noise = this.ctx.createBufferSource(); noise.buffer = buf;
+        const filter = this.ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(140, now);
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.42, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
+        noise.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+        noise.start(now);
+      },
+      playPropBreak(isElectric = false) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+        osc.type = isElectric ? 'square' : 'triangle';
+        osc.frequency.setValueAtTime(isElectric ? 680 : 240, now);
+        osc.frequency.exponentialRampToValueAtTime(isElectric ? 110 : 55, now + 0.16);
+        gain.gain.setValueAtTime(0.18, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(now); osc.stop(now + 0.19);
+      }
+    };
+
+    // =========================================================================
+    // 3. 전역 상태 변수
+    // =========================================================================
+    let isInitialized = false;
+    let scene, camera, renderer, controls, raycaster, pointer;
+    let ambientLight, hemiLight, dirLight;
+    let isSunset = false, currentMode = 'tour', currentWeapon = 'meteor', selectedId = null;
+
+    const tourZones = {}, labelElements = {}, contextLabelElements = [], streetLampBulbs = [];
+    let schoolBusGroup = null, selectionRing = null, attackAimRing = null;
+    const weaponRadii = { meteor: 7.0, laser: 4.8, bomb: 6.0 };
+
+    const destructibles = {}, destructibleProps = [], groundCracks = [], students = [];
+    let groundCrackTexture = null;
+    const debrisParticles = [], smokeParticles = [], activeProjectiles = [], activeEffects = [];
+    let comboCount = 0, lastHitTime = 0, screenShakeIntensity = 0, victoryShown = false;
+    let isCameraAnimating = false;
+    const targetCamPos = new THREE.Vector3(...CAMERA_PRESETS.all.pos);
+    const targetLookAt = new THREE.Vector3(...CAMERA_PRESETS.all.lookAt);
+    let pointerDownPos = { x: 0, y: 0 };
+
+    const sharedBoxGeo = new THREE.BoxGeometry(1, 1, 1);
+    const sharedSphereGeo = new THREE.SphereGeometry(1, 7, 7);
+
+    function createSignTexture(text, bgColor, textColor, width = 512, height = 128, fontSize = 56) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = textColor;
+      ctx.font = `800 ${fontSize}px "Noto Sans KR", sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(text, width / 2, height / 2 + 2);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.encoding = THREE.sRGBEncoding;
+      return tex;
+    }
+
+    function createGroundCrackTexture() {
+      const size = 512, canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d'), cx = size / 2, cy = size / 2;
+      const grad = ctx.createRadialGradient(cx, cy, 8, cx, cy, size * 0.42);
+      grad.addColorStop(0, 'rgba(15, 23, 42, 0.92)');
+      grad.addColorStop(0.3, 'rgba(30, 41, 59, 0.62)');
+      grad.addColorStop(0.65, 'rgba(51, 65, 85, 0.2)');
+      grad.addColorStop(1, 'rgba(15, 23, 42, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(cx, cy, size * 0.44, 0, Math.PI * 2); ctx.fill();
+
+      for (let i = 0; i < 11; i++) {
+        let angle = (i / 11) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
+        let x = cx, y = cy;
+        const segs = 5 + Math.floor(Math.random() * 4);
+        const maxDist = size * (0.32 + Math.random() * 0.16);
+        ctx.beginPath(); ctx.moveTo(x, y);
+        for (let s = 1; s <= segs; s++) {
+          const r = (s / segs) * maxDist;
+          angle += (Math.random() - 0.5) * 0.42;
+          const nx = cx + Math.cos(angle) * r, ny = cy + Math.sin(angle) * r;
+          ctx.lineTo(nx, ny);
+          if (s >= 2 && Math.random() < 0.5) {
+            const bA = angle + (Math.random() < 0.5 ? 0.6 : -0.6);
+            ctx.moveTo(nx, ny);
+            ctx.lineTo(nx + Math.cos(bA) * maxDist * 0.22, ny + Math.sin(bA) * maxDist * 0.22);
+            ctx.moveTo(nx, ny);
+          }
+          x = nx; y = ny;
+        }
+        ctx.strokeStyle = 'rgba(226, 232, 240, 0.28)'; ctx.lineWidth = 6.5; ctx.lineCap = 'round'; ctx.stroke();
+        ctx.strokeStyle = 'rgba(10, 14, 22, 0.94)'; ctx.lineWidth = 3.6; ctx.stroke();
+      }
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.encoding = THREE.sRGBEncoding;
+      return tex;
+    }
+
+    function spawnGroundCrack(pos, scale = 6.5) {
+      if (!groundCrackTexture) groundCrackTexture = createGroundCrackTexture();
+      if (groundCracks.length >= 80) {
+        const old = groundCracks.shift();
+        scene.remove(old); old.geometry.dispose(); old.material.dispose();
+      }
+      const mat = new THREE.MeshBasicMaterial({
+        map: groundCrackTexture, transparent: true, opacity: 0.95,
+        depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4
+      });
+      const crack = new THREE.Mesh(new THREE.PlaneGeometry(scale, scale), mat);
+      crack.rotation.x = -Math.PI / 2;
+      crack.rotation.z = Math.random() * Math.PI * 2;
+      crack.position.set(pos.x, pos.y > 2.8 && pos.y < 3.8 ? 3.33 : 0.24, pos.z);
+      crack.renderOrder = 3;
+      scene.add(crack);
+      groundCracks.push(crack);
+    }
+
+    function registerDestructibleProp(obj, type, colors, centerPos) {
+      const idx = destructibleProps.length;
+      obj.traverse((c) => { if (c.isMesh) c.userData.propIndex = idx; });
+      destructibleProps.push({ index: idx, group: obj, type, colors, center: new THREE.Vector3(...centerPos), destroyed: false });
+    }
+
+    function destroyProp(prop) {
+      if (!prop || prop.destroyed) return;
+      prop.destroyed = true;
+      prop.group.visible = false;
+      const isLamp = prop.type === 'lamp';
+      const cnt = prop.type === 'aux' ? 16 : prop.type === 'tree' ? 9 : 7;
+      spawnDebris(prop.center.clone().add(new THREE.Vector3(0, 1.4, 0)), cnt, prop.colors);
+      if (isLamp) spawnDebris(prop.center.clone().add(new THREE.Vector3(0, 3.2, 0)), 8, [0xfef08a, 0xfacc15, 0xffffff]);
+      SoundFX.playPropBreak(isLamp);
+      bumpCombo();
+    }
+
+    function damagePropsInRadius(hitPoint, radius) {
+      destructibleProps.forEach((p) => {
+        if (!p.destroyed && Math.hypot(p.center.x - hitPoint.x, p.center.z - hitPoint.z) <= radius) destroyProp(p);
+      });
+    }
+
+    function bumpCombo() {
+      const now = performance.now();
+      comboCount = now - lastHitTime < 2800 ? comboCount + 1 : 1;
+      lastHitTime = now;
+      const el = document.getElementById('combo-count');
+      if (el) el.textContent = comboCount;
+      const box = document.getElementById('combo-box');
+      if (box) { box.classList.remove('combo-pop'); void box.offsetWidth; box.classList.add('combo-pop'); }
+    }
+
+    // =========================================================================
+    // 4. 초기화 및 조명
+    // =========================================================================
+    function init() {
+      if (isInitialized) return;
+      isInitialized = true;
+
+      const container = document.getElementById('canvas-container');
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xcde5fc);
+      scene.fog = new THREE.Fog(0xcde5fc, 130, 290);
+
+      camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 420);
+      camera.position.set(...CAMERA_PRESETS.all.pos);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      container.appendChild(renderer.domElement);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.075;
+      controls.rotateSpeed = 0.72;
+      controls.zoomSpeed = 0.9;
+      controls.panSpeed = 0.7;
+      controls.minDistance = 16;
+      controls.maxDistance = 155;
+      controls.maxPolarAngle = Math.PI / 2.08;
+      controls.minPolarAngle = 0.02;
+      controls.target.set(...CAMERA_PRESETS.all.lookAt);
+      controls.addEventListener('start', () => { isCameraAnimating = false; });
+
+      hemiLight = new THREE.HemisphereLight(0xffffff, 0x94a3b8, 0.78);
+      hemiLight.position.set(0, 70, 0);
+      scene.add(hemiLight);
+      ambientLight = new THREE.AmbientLight(0xffffff, 0.24);
+      scene.add(ambientLight);
+      dirLight = new THREE.DirectionalLight(0xfffbeb, 0.95);
+      dirLight.position.set(45, 75, -50);
+      dirLight.castShadow = true;
+      dirLight.shadow.mapSize.width = 2048;
+      dirLight.shadow.mapSize.height = 2048;
+      dirLight.shadow.camera.near = 10;
+      dirLight.shadow.camera.far = 220;
+      const d = 75;
+      dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d;
+      dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
+      dirLight.shadow.bias = -0.0005;
+      scene.add(dirLight);
+
+      buildTerrainAndMountains();
+      buildRoadNetwork();
+      buildWestCampusContext();
+      buildMainBuildingAndCU();
+      buildCentralParkingLot();
+      buildEngineeringAndBleachers();
+      buildHealthBuilding();
+      buildEastSouthContextBuildings();
+      buildPerimeterTreesAndLamps();
+      buildWalkingStudents();
+      buildSelectionRing();
+
+      attackAimRing = new THREE.Mesh(
+        new THREE.RingGeometry(0.84, 1.0, 40),
+        new THREE.MeshBasicMaterial({ color: 0xffb21a, transparent: true, opacity: 0.88, side: THREE.DoubleSide, depthWrite: false })
+      );
+      attackAimRing.visible = false;
+      attackAimRing.renderOrder = 10;
+      scene.add(attackAimRing);
+
+      raycaster = new THREE.Raycaster();
+      pointer = new THREE.Vector2();
+      buildUI();
+      bindEvents();
+
+      controls.update();
+      renderer.render(scene, camera);
+      animate();
+    }
+
+    function registerTourZone(id, group) {
+      const meshes = [];
+      group.traverse((c) => { if (c.isMesh) { c.userData.tourId = id; meshes.push(c); } });
+      tourZones[id] = { group, meshes };
+    }
+
+    function registerDestructible(id, name, group, maxHp, centerPos, hpLabelOffsetY = 12, countInProgress = true) {
+      const meshes = [], segmentParts = new Map(), structureParts = new Map();
+      group.traverse((c) => {
+        if (c.isMesh) {
+          c.userData.smashId = id;
+          if (c.material && !Array.isArray(c.material)) {
+            c.material = c.material.clone();
+            c.userData.origColor = c.material.color.clone();
+          }
+          meshes.push(c);
+          if (c.userData.structureKey) {
+            const k = c.userData.structureKey;
+            c.userData.segmentKey = k;
+            if (!structureParts.has(k)) structureParts.set(k, []);
+            structureParts.get(k).push(c);
+          } else if (c.userData.segmentKey) {
+            if (!segmentParts.has(c.userData.segmentKey)) segmentParts.set(c.userData.segmentKey, []);
+            segmentParts.get(c.userData.segmentKey).push(c);
+          }
+        }
+      });
+
+      const segHp = id === 'ground' ? 14 : 18;
+      const cells = new Map();
+      segmentParts.forEach((parts, key) => {
+        const center = new THREE.Vector3();
+        parts.forEach((p) => center.add(p.position));
+        center.multiplyScalar(1 / Math.max(1, parts.length));
+        cells.set(key, { key, parts, structureParts: structureParts.get(key) || [], center, hp: segHp, maxHp: segHp, broken: false });
+      });
+      if (cells.size > 0) maxHp = cells.size * segHp;
+
+      const hpEl = document.createElement('div');
+      hpEl.className = 'hp-overlay hidden flex flex-col items-center';
+      hpEl.innerHTML = `
+        <div class="hp-badge hidden px-2.5 py-0.5 rounded-full bg-rose-600 text-white text-[11px] font-black shadow-lg border border-rose-300">💥 붕괴</div>
+        <div class="hp-bar-wrap bg-slate-900/85 backdrop-blur-sm px-2 py-1 rounded-xl border border-white/20 shadow-lg flex flex-col items-center min-w-[76px]">
+          <span class="text-[10px] font-extrabold text-white leading-none mb-1">${name}</span>
+          <div class="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+            <div class="hp-fill h-full w-full bg-emerald-400 transition-all duration-150"></div>
+          </div>
+        </div>`;
+      document.getElementById('hp-container').appendChild(hpEl);
+
+      destructibles[id] = {
+        id, name, group, meshes, hp: maxHp, maxHp,
+        center: new THREE.Vector3(...centerPos),
+        hpLabelPos: new THREE.Vector3(centerPos[0], centerPos[1] + hpLabelOffsetY, centerPos[2]),
+        basePos: group.position.clone(), baseRot: group.rotation.clone(),
+        destroyed: false, hpEl, cells, countInProgress
+      };
+    }
+
+    // =========================================================================
+    // 5. 캠퍼스 3D 모델링 (실제 항공 지도 배치 + 디테일 보강)
+    // =========================================================================
+    function buildTerrainAndMountains() {
+      const groundGroup = new THREE.Group();
+      const grassMat = new THREE.MeshStandardMaterial({ color: 0xa6d19a, roughness: 0.92 });
+      const tileSize = 8;
+      for (let col = 0; col < 17; col++) {
+        for (let row = 0; row < 9; row++) {
+          const tile = new THREE.Mesh(new THREE.BoxGeometry(tileSize - 0.03, 0.42, tileSize - 0.03), grassMat);
+          tile.position.set(-68 + col * tileSize + tileSize / 2, -0.22, -33 + row * tileSize + tileSize / 2);
+          tile.userData.segmentKey = `${col}:${row}:0`;
+          tile.receiveShadow = true;
+          groundGroup.add(tile);
+        }
+      }
+      scene.add(groundGroup);
+      registerDestructible('ground', '캠퍼스 바닥', groundGroup, 100, [0, 0, 3], 5, false);
+
+      const base = new THREE.Mesh(new THREE.BoxGeometry(138, 0.62, 74), new THREE.MeshStandardMaterial({ color: 0x64715f, roughness: 0.95 }));
+      base.position.set(0, -0.76, 3); base.receiveShadow = true; scene.add(base);
+
+      const mountainGroup = new THREE.Group();
+      const mColors = [0x5c8f78, 0x4b7c68, 0x6ba088, 0x3f6e5c];
+      [
+        { x: -30, z: 38, r: 18, h: 16, c: 0 }, { x: -4, z: 40, r: 22, h: 20, c: 1 },
+        { x: 24, z: 39, r: 24, h: 23, c: 2 }, { x: 50, z: 34, r: 22, h: 21, c: 3 },
+        { x: 64, z: 16, r: 18, h: 17, c: 1 }, { x: 66, z: -6, r: 16, h: 14, c: 0 }
+      ].forEach((h, i) => {
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(h.r, h.h, 7), new THREE.MeshStandardMaterial({ color: mColors[h.c], roughness: 0.95, flatShading: true }));
+        cone.position.set(h.x, h.h / 2 - 0.5, h.z);
+        cone.rotation.y = h.x * 0.15;
+        cone.userData.segmentKey = `${i}:0:0`;
+        cone.receiveShadow = true; cone.castShadow = true;
+        mountainGroup.add(cone);
+      });
+      scene.add(mountainGroup);
+      registerDestructible('mountains', '장군산 능선', mountainGroup, 100, [24, 0, 38], 26, false);
+    }
+
+    function buildRoadNetwork() {
+      const roadMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.92 });
+      const lightRoadMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.9 });
+      const addRoad = (w, d, x, z, mat = roadMat, rotY = 0) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.14, d), mat);
+        m.position.set(x, 0.07, z); m.rotation.y = rotY; m.receiveShadow = true; scene.add(m);
+      };
+      addRoad(92, 4.2, -10, -21, roadMat);
+      addRoad(4.2, 46, -60, 4, roadMat);
+      addRoad(10, 4.2, -56, -18.5, roadMat, 0.55);
+      addRoad(3.8, 44, -31, 3, lightRoadMat);
+      addRoad(66, 3.4, 5, -17.5, lightRoadMat);
+      addRoad(3.6, 30, 39.5, -3, lightRoadMat);
+      addRoad(72, 3.4, 4, 11.8, lightRoadMat);
+
+      const rb = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.6, 0.15, 24), roadMat);
+      rb.position.set(-32, 0.075, -19); rb.receiveShadow = true; scene.add(rb);
+      const rbi = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.3, 20), new THREE.MeshStandardMaterial({ color: 0x86efac, roughness: 0.85 }));
+      rbi.position.set(-32, 0.15, -19); scene.add(rbi);
+
+      // 파란색 "한영대학교" 입구 표지판 (앞에 나무 없음, 파괴 가능)
+      const signGroup = new THREE.Group();
+      signGroup.position.set(-28.5, 0, -23.5);
+      const signTex = createSignTexture('한영대학교', '#1d4ed8', '#ffffff', 512, 128, 72);
+      const signBoard = new THREE.Mesh(new THREE.BoxGeometry(5.4, 1.35, 0.22), new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.4 }));
+      signBoard.position.y = 2.0; signBoard.castShadow = true; signGroup.add(signBoard);
+      [-1.9, 1.9].forEach((px) => {
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.8, 8), new THREE.MeshStandardMaterial({ color: 0x94a3b8 }));
+        pole.position.set(px, 0.9, 0); signGroup.add(pole);
+      });
+      scene.add(signGroup);
+      registerDestructibleProp(signGroup, 'sign', [0x1d4ed8, 0xffffff, 0x94a3b8], [-28.5, 1.2, -23.5]);
+    }
+
+    function buildWestCampusContext() {
+      const field = new THREE.Mesh(new THREE.BoxGeometry(22, 0.12, 30), new THREE.MeshStandardMaterial({ color: 0xe6d5b8, roughness: 0.95 }));
+      field.position.set(-46, 0.06, 4); field.receiveShadow = true; scene.add(field);
+      const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const tOut = new THREE.Mesh(new THREE.BoxGeometry(18.5, 0.04, 26.5), lineMat); tOut.position.set(-46, 0.13, 4); scene.add(tOut);
+      const tIn = new THREE.Mesh(new THREE.BoxGeometry(17.7, 0.05, 25.7), new THREE.MeshStandardMaterial({ color: 0xe6d5b8, roughness: 0.95 })); tIn.position.set(-46, 0.135, 4); scene.add(tIn);
+      const cLine = new THREE.Mesh(new THREE.BoxGeometry(17.7, 0.055, 0.25), lineMat); cLine.position.set(-46, 0.14, 4); scene.add(cLine);
+
+      // 봉헌관 (창문·옥상 디테일 포함, HP 45)
+      const bg = new THREE.Group();
+      const bBody = new THREE.Mesh(new THREE.BoxGeometry(14, 6, 7), new THREE.MeshStandardMaterial({ color: 0xd8dee9, roughness: 0.8 }));
+      bBody.position.set(-46, 3, -15); bBody.castShadow = true; bBody.receiveShadow = true; bg.add(bBody);
+      const bRoof = new THREE.Mesh(new THREE.BoxGeometry(14.3, 0.4, 7.3), new THREE.MeshStandardMaterial({ color: 0x4f8c70, roughness: 0.85 }));
+      bRoof.position.set(-46, 6.2, -15); bg.add(bRoof);
+      const winMat = new THREE.MeshStandardMaterial({ color: 0x93c5fd, roughness: 0.25 });
+      for (let i = -4.5; i <= 4.5; i += 3) {
+        const w1 = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.3, 0.16), winMat);
+        w1.position.set(-46 + i, 3.8, -11.45); bg.add(w1);
+        const w2 = w1.clone(); w2.position.z = -18.55; bg.add(w2);
+      }
+      scene.add(bg);
+      registerDestructible('bongheon', '봉헌관', bg, 45, [-46, 0, -15], 8.5, true);
+
+      // 테니스장 & 파괴 가능 네트
+      const tBase = new THREE.Mesh(new THREE.BoxGeometry(10, 0.12, 12), new THREE.MeshStandardMaterial({ color: 0xdbeafe, roughness: 0.9 }));
+      tBase.position.set(-50, 0.06, 26); scene.add(tBase);
+      [-2.7, 2.7].forEach((oz) => {
+        const court = new THREE.Mesh(new THREE.BoxGeometry(8.2, 0.05, 4.4), new THREE.MeshStandardMaterial({ color: 0x4ade80, roughness: 0.85 }));
+        court.position.set(-50, 0.14, 26 + oz); scene.add(court);
+        const net = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 4.4), lineMat);
+        net.position.set(-50, 0.38, 26 + oz); scene.add(net);
+        registerDestructibleProp(net, 'net', [0xffffff, 0xcbd5e1, 0x4ade80], [-50, 0.4, 26 + oz]);
+      });
+    }
+
+    function buildMainBuildingAndCU() {
+      const mainGroup = new THREE.Group();
+      const charcoalMat = new THREE.MeshStandardMaterial({ color: 0x59464a, roughness: 0.78 });
+      const lightWallMat = new THREE.MeshStandardMaterial({ color: 0x985458, roughness: 0.86 });
+      const glassMat = new THREE.MeshStandardMaterial({ color: 0xa9c6d2, roughness: 0.2, metalness: 0.12 });
+      const darkGroundMat = new THREE.MeshStandardMaterial({ color: 0x2c3038, roughness: 0.8 });
+      const greenRoofMat = new THREE.MeshStandardMaterial({ color: 0x4f8c70, roughness: 0.88 });
+      const steelMat = new THREE.MeshStandardMaterial({ color: 0x343a43, roughness: 0.42, metalness: 0.68 });
+      const hvacMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.6 });
+
+      const cols = 8, rows = 5, layers = 2;
+      const cellW = 30 / cols, cellH = 11 / rows, cellD = 7.5 / layers;
+      const cX = (c) => -25 + c * cellW + cellW / 2;
+      const cY = (r) => r * cellH + cellH / 2;
+      const cZ = (l) => -7.75 + l * cellD + cellD / 2;
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          for (let l = 0; l < layers; l++) {
+            const key = `${c}:${r}:${l}`;
+            const mat = r === 0 ? darkGroundMat : (c === 0 || c === cols - 1) ? charcoalMat : lightWallMat;
+            const block = new THREE.Mesh(new THREE.BoxGeometry(cellW - 0.04, cellH - 0.04, cellD - 0.04), mat);
+            block.position.set(cX(c), cY(r), cZ(l));
+            block.userData.segmentKey = key;
+            block.castShadow = true; block.receiveShadow = true;
+            mainGroup.add(block);
+            if (r === rows - 1) {
+              const roof = new THREE.Mesh(new THREE.BoxGeometry(cellW, 0.25, cellD), greenRoofMat);
+              roof.position.set(cX(c), 11.15, cZ(l));
+              roof.userData.segmentKey = key;
+              mainGroup.add(roof);
+            }
+          }
+          // 전면(북) & 후면(남) 창문
+          if (r >= 1) {
+            const wf = new THREE.Mesh(new THREE.BoxGeometry(cellW - 0.4, 1.05, 0.16), glassMat);
+            wf.position.set(cX(c), cY(r), -7.82); wf.userData.segmentKey = `${c}:${r}:0`; mainGroup.add(wf);
+            const wb = new THREE.Mesh(new THREE.BoxGeometry(cellW - 0.4, 1.05, 0.16), glassMat);
+            wb.position.set(cX(c), cY(r), -0.18); wb.userData.segmentKey = `${c}:${r}:1`; mainGroup.add(wb);
+          }
+          // 측면(서·동) 창문
+          if (r >= 1 && (c === 0 || c === cols - 1)) {
+            const ws = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.0, 2.2), glassMat);
+            ws.position.set(c === 0 ? -25.05 : 5.05, cY(r), -4);
+            ws.userData.segmentKey = `${c}:${r}:0`; mainGroup.add(ws);
+          }
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, cellH - 0.1, 0.18), steelMat);
+          post.position.set(cX(c), cY(r), -7.92); post.userData.structureKey = `${c}:${r}:0`; mainGroup.add(post);
+        }
+      }
+
+      // 옥상 계단실(펜트하우스) & 실외기
+      const penthouse = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.2, 3.6), charcoalMat);
+      penthouse.position.set(-10, 12.3, -4); penthouse.userData.segmentKey = '4:4:0'; penthouse.castShadow = true; mainGroup.add(penthouse);
+      [-18, -2].forEach((hx, idx) => {
+        const hvac = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.0, 1.5), hvacMat);
+        hvac.position.set(hx, 11.75, -4); hvac.userData.segmentKey = `${idx === 0 ? 1 : 6}:4:0`; mainGroup.add(hvac);
+      });
+
+      // 본관 전면 간판 ("본 관")
+      const mainSignTex = createSignTexture('본   관', '#1e3a8a', '#ffffff', 512, 96, 52);
+      const mainSign = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.82, 0.18), new THREE.MeshStandardMaterial({ map: mainSignTex, roughness: 0.35 }));
+      mainSign.position.set(-10, 2.35, -7.88); mainSign.userData.segmentKey = '4:0:0'; mainGroup.add(mainSign);
+
+      scene.add(mainGroup);
+      registerTourZone('main', mainGroup);
+      registerDestructible('main', '본관', mainGroup, 100, [-10, 0, -4], 14, true);
+
+      // CU 편의점 별관 (HP 35)
+      const cuGroup = new THREE.Group();
+      const cuBody = new THREE.Mesh(new THREE.BoxGeometry(4.5, 4.5, 5.5), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.65 }));
+      cuBody.position.set(7.5, 2.25, -4); cuBody.castShadow = true; cuGroup.add(cuBody);
+      const cuPurple = new THREE.Mesh(new THREE.BoxGeometry(4.65, 0.85, 5.65), new THREE.MeshStandardMaterial({ color: 0x6d28d9, roughness: 0.45 }));
+      cuPurple.position.set(7.5, 4.15, -4); cuGroup.add(cuPurple);
+      const cuTex = createSignTexture('CU', '#6d28d9', '#a3e635', 256, 128, 76);
+      const cuSign = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.8, 0.15), new THREE.MeshStandardMaterial({ map: cuTex, roughness: 0.35 }));
+      cuSign.position.set(7.5, 4.15, -6.85); cuGroup.add(cuSign);
+      scene.add(cuGroup);
+      registerDestructible('cu', 'CU 편의점', cuGroup, 35, [7.5, 0, -4], 6.5, true);
+
+      const courtyard = new THREE.Mesh(new THREE.BoxGeometry(30, 0.14, 7.2), new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.92 }));
+      courtyard.position.set(-10, 0.07, -12); courtyard.receiveShadow = true; scene.add(courtyard);
+    }
+
+    function buildCentralParkingLot() {
+      const parkGroup = new THREE.Group();
+      const asphalt = new THREE.Mesh(new THREE.BoxGeometry(28, 0.16, 12), new THREE.MeshStandardMaterial({ color: 0x3b4252, roughness: 0.92 }));
+      asphalt.position.set(23, 0.08, -12); asphalt.receiveShadow = true; parkGroup.add(asphalt);
+      const lineMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+      for (let i = 0; i <= 10; i++) {
+        const x = 11.5 + i * 2.3;
+        const l1 = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.03, 3.2), lineMat); l1.position.set(x, 0.17, -14.8); parkGroup.add(l1);
+        const l2 = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.03, 3.2), lineMat); l2.position.set(x, 0.17, -9.2); parkGroup.add(l2);
+      }
+      const pergola = createWoodenPergola();
+      pergola.position.set(16.5, 0.16, -18.8); parkGroup.add(pergola);
+      registerDestructibleProp(pergola, 'pergola', [0x78350f, 0x92400e, 0xb45309], [16.5, 1.2, -18.8]);
+      scene.add(parkGroup);
+      registerTourZone('parking', parkGroup);
+
+      // 주차장 차량들 (HP 40)
+      const carsGroup = new THREE.Group();
+      const palette = [0xf8fafc, 0x1e293b, 0x94a3b8, 0x3b82f6, 0x475569, 0xa3e635, 0xf1f5f9, 0xef4444];
+      [
+        { x: 12.6, z: -14.8, rot: 0 }, { x: 14.9, z: -14.8, rot: 0 }, { x: 19.5, z: -14.8, rot: 0 },
+        { x: 21.8, z: -14.8, rot: 0 }, { x: 26.4, z: -14.8, rot: 0 }, { x: 31.0, z: -14.8, rot: 0 },
+        { x: 12.6, z: -9.2, rot: Math.PI }, { x: 17.2, z: -9.2, rot: Math.PI },
+        { x: 24.1, z: -9.2, rot: Math.PI }, { x: 28.7, z: -9.2, rot: Math.PI }
+      ].forEach((s, idx) => {
+        const car = createMiniCar(palette[idx % palette.length]);
+        car.position.set(s.x, 0.18, s.z); car.rotation.y = s.rot; carsGroup.add(car);
+      });
+      scene.add(carsGroup);
+      registerDestructible('cars', '주차장 차량들', carsGroup, 40, [23, 0, -12], 4.5, true);
+
+      // 한영대 스쿨버스 (HP 35)
+      schoolBusGroup = createWhiteUniversityBus();
+      schoolBusGroup.position.set(28.5, 0.18, -17.2);
+      scene.add(schoolBusGroup);
+      registerDestructible('bus', '한영대 스쿨버스', schoolBusGroup, 35, [28.5, 0.18, -17.2], 4.2, true);
+    }
+
+    function buildEngineeringAndBleachers() {
+      // 공학관 하부 테라스 (CU·도로·한영고 쪽으로 삐져나오지 않게 깔끔하게 정돈)
+      const terrace = new THREE.Mesh(new THREE.BoxGeometry(27, 3.2, 9.2), new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.9 }));
+      terrace.position.set(26, 1.6, 5.2); terrace.receiveShadow = true; scene.add(terrace);
+
+      // 공학관 컬러 단상 (전체 구역별 파괴 가능!)
+      const bleacherGroup = new THREE.Group();
+      const buildSection = (xStart, xEnd, colorHex, steps, segKey) => {
+        const w = xEnd - xStart, xc = (xStart + xEnd) / 2;
+        const mat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.72 });
+        const sd = 3.4 / steps, sh = 3.2 / steps;
+        for (let s = 0; s < steps; s++) {
+          const h = (s + 1) * sh;
+          const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, sd), mat);
+          m.position.set(xc, h / 2, -2.6 + s * sd + sd / 2);
+          m.userData.segmentKey = segKey;
+          m.castShadow = true; m.receiveShadow = true;
+          bleacherGroup.add(m);
+        }
+      };
+      buildSection(13, 20, 0x7e57c2, 6, '0:0:0'); // 보라 스탠드
+      buildSection(20, 22, 0x047857, 8, '1:0:0'); // 서쪽 초록 계단
+
+      // 중앙 파란 무대 & 난간
+      const stageMat = new THREE.MeshStandardMaterial({ color: 0x2541e8, roughness: 0.65 });
+      const sBase = new THREE.Mesh(new THREE.BoxGeometry(5.0, 2.0, 3.4), stageMat);
+      sBase.position.set(24.5, 1.0, -0.9); sBase.userData.segmentKey = '2:0:0'; sBase.castShadow = true; bleacherGroup.add(sBase);
+      const sTop = new THREE.Mesh(new THREE.BoxGeometry(5.0, 1.2, 1.5), stageMat);
+      sTop.position.set(24.5, 2.6, 0.1); sTop.userData.segmentKey = '2:0:0'; bleacherGroup.add(sTop);
+
+      const railMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.65, roughness: 0.28 });
+      const frontRail = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.08, 0.08), railMat);
+      frontRail.position.set(24.5, 2.55, -2.55); frontRail.userData.segmentKey = '2:0:0'; bleacherGroup.add(frontRail);
+      [22.2, 23.3, 24.5, 25.7, 26.8].forEach((rx) => {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.65, 0.07), railMat);
+        post.position.set(rx, 2.25, -2.55); post.userData.segmentKey = '2:0:0'; bleacherGroup.add(post);
+      });
+
+      buildSection(27, 29, 0x047857, 8, '3:0:0'); // 동쪽 초록 계단
+      buildSection(29, 34.5, 0x059669, 6, '4:0:0'); // 초록 스탠드
+      buildSection(34.5, 39.5, 0xd97706, 6, '5:0:0'); // 주황 스탠드
+      scene.add(bleacherGroup);
+      registerDestructible('bleachers', '공학관 단상', bleacherGroup, 100, [26, 1.5, -1], 5.5, true);
+
+      // 공학관 본체 (전면·후면·측면 창문 + 옥상 설비 + 서쪽 계단실 타워)
+      const engGroup = new THREE.Group();
+      const engBaseY = 3.2;
+      const mauveMat = new THREE.MeshStandardMaterial({ color: 0x59464a, roughness: 0.82 });
+      const lightWallMat = new THREE.MeshStandardMaterial({ color: 0x985458, roughness: 0.86 });
+      const glassMat = new THREE.MeshStandardMaterial({ color: 0x93c5fd, roughness: 0.22, metalness: 0.15 });
+      const engRoofMat = new THREE.MeshStandardMaterial({ color: 0x4f8c70, roughness: 0.88 });
+      const steelMat = new THREE.MeshStandardMaterial({ color: 0x343a43, roughness: 0.42, metalness: 0.68 });
+      const hvacMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.6 });
+
+      const cols = 7, rows = 5, layers = 2;
+      const cellW = 26 / cols, cellH = 11.2 / rows, cellD = 7.5 / layers;
+      const eX = (c) => 13 + c * cellW + cellW / 2;
+      const eY = (r) => engBaseY + r * cellH + cellH / 2;
+      const eZ = (l) => 5 - 3.75 + l * cellD + cellD / 2;
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          for (let l = 0; l < layers; l++) {
+            const key = `${c}:${r}:${l}`;
+            const block = new THREE.Mesh(new THREE.BoxGeometry(cellW - 0.04, cellH - 0.04, cellD - 0.04), c === 0 ? mauveMat : lightWallMat);
+            block.position.set(eX(c), eY(r), eZ(l));
+            block.userData.segmentKey = key;
+            block.castShadow = true; block.receiveShadow = true;
+            engGroup.add(block);
+            if (r === rows - 1) {
+              const roof = new THREE.Mesh(new THREE.BoxGeometry(cellW, 0.25, cellD), engRoofMat);
+              roof.position.set(eX(c), engBaseY + 11.35, eZ(l)); roof.userData.segmentKey = key; engGroup.add(roof);
+            }
+          }
+          if (r >= 1) {
+            const wf = new THREE.Mesh(new THREE.BoxGeometry(cellW - 0.45, 1.05, 0.16), glassMat);
+            wf.position.set(eX(c), eY(r), 1.18); wf.userData.segmentKey = `${c}:${r}:0`; engGroup.add(wf);
+            const wb = new THREE.Mesh(new THREE.BoxGeometry(cellW - 0.45, 1.05, 0.16), glassMat);
+            wb.position.set(eX(c), eY(r), 8.82); wb.userData.segmentKey = `${c}:${r}:1`; engGroup.add(wb);
+          }
+          if (r >= 1 && (c === 0 || c === cols - 1)) {
+            const ws = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.0, 2.2), glassMat);
+            ws.position.set(c === 0 ? 12.95 : 39.05, eY(r), 5);
+            ws.userData.segmentKey = `${c}:${r}:0`; engGroup.add(ws);
+          }
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.15, cellH - 0.1, 0.18), steelMat);
+          post.position.set(eX(c), eY(r), 1.05); post.userData.structureKey = `${c}:${r}:0`; engGroup.add(post);
+        }
+      }
+
+      // 서쪽 계단실 옥탑 & 옥상 실외기
+      const stairCap = new THREE.Mesh(new THREE.BoxGeometry(3.5, 2.0, 4.0), mauveMat);
+      stairCap.position.set(14.8, engBaseY + 12.4, 5); stairCap.userData.segmentKey = '0:4:0'; engGroup.add(stairCap);
+      [22, 33].forEach((hx, idx) => {
+        const hv = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.0, 1.6), hvacMat);
+        hv.position.set(hx, engBaseY + 11.9, 5); hv.userData.segmentKey = `${idx === 0 ? 2 : 5}:4:0`; engGroup.add(hv);
+      });
+
+      const engSignTex = createSignTexture('공  학  관', '#94a3b8', '#f8fafc', 384, 96, 52);
+      const engSign = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.72, 0.14), new THREE.MeshStandardMaterial({ map: engSignTex, roughness: 0.5 }));
+      engSign.position.set(25.5, engBaseY + 2.25, 0.9); engSign.userData.segmentKey = '3:0:0'; engGroup.add(engSign);
+
+      scene.add(engGroup);
+      registerTourZone('engineering', engGroup);
+      registerDestructible('engineering', '공학관', engGroup, 100, [26, 3.2, 5], 15, true);
+    }
+
+    function buildHealthBuilding() {
+      const group = new THREE.Group();
+      group.position.set(48, 0, -16);
+      group.rotation.y = 0.08;
+      const tileWallMat = new THREE.MeshStandardMaterial({ color: 0xdbe0e6, roughness: 0.72 });
+      const terracottaMat = new THREE.MeshStandardMaterial({ color: 0x9a4a38, roughness: 0.8 });
+      const blueGlassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.18, metalness: 0.25 });
+      const windowMat = new THREE.MeshStandardMaterial({ color: 0x93c5fd, roughness: 0.22 });
+
+      const cols = 4, rows = 3, layers = 2;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          for (let l = 0; l < layers; l++) {
+            const b = new THREE.Mesh(new THREE.BoxGeometry(3.96, 3.3, 3.7), tileWallMat);
+            b.position.set(-6 + c * 4 + 2, r * 3.35 + 1.68, -3.75 + l * 3.75 + 1.88);
+            b.userData.segmentKey = `${c}:${r}:${l}`;
+            b.castShadow = true; b.receiveShadow = true; group.add(b);
+          }
+        }
+      }
+      const brickTower = new THREE.Mesh(new THREE.BoxGeometry(3.6, 10.6, 3.2), terracottaMat);
+      brickTower.position.set(-6.4, 5.3, 1.2); brickTower.userData.segmentKey = '0:1:1'; brickTower.castShadow = true; group.add(brickTower);
+      const cornerGlass = new THREE.Mesh(new THREE.BoxGeometry(1.9, 8.6, 1.9), blueGlassMat);
+      cornerGlass.position.set(-7.15, 5.1, -2.95); cornerGlass.userData.segmentKey = '0:1:0'; group.add(cornerGlass);
+
+      for (let floor = 1; floor <= 3; floor++) {
+        const y = floor * 3.1 - 1.2;
+        const wf = new THREE.Mesh(new THREE.BoxGeometry(11.5, 1.0, 0.16), windowMat);
+        wf.position.set(1.5, y, 3.8); wf.userData.segmentKey = `2:${Math.min(2, floor - 1)}:1`; group.add(wf);
+        const wb = new THREE.Mesh(new THREE.BoxGeometry(11.5, 1.0, 0.16), windowMat);
+        wb.position.set(1.5, y, -3.8); wb.userData.segmentKey = `2:${Math.min(2, floor - 1)}:0`; group.add(wb);
+      }
+      const ramp = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.45, 5.2), new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.8 }));
+      ramp.position.set(-9.2, 0.25, -1.5); ramp.rotation.z = 0.08; ramp.userData.segmentKey = '0:0:0'; group.add(ramp);
+
+      scene.add(group);
+      registerTourZone('health', group);
+      registerDestructible('health', '보건관', group, 100, [48, 0, -16], 14, true);
+    }
+
+    function buildEastSouthContextBuildings() {
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0xdbe2ea, roughness: 0.82 });
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0x4f8c70, roughness: 0.88 });
+      const winMat = new THREE.MeshStandardMaterial({ color: 0x93c5fd, roughness: 0.22 });
+      const canopyMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.7 });
+
+      // 동쪽 사선 보조 건물 (창문 + 초록 옥상)
+      const diagGroup = new THREE.Group();
+      diagGroup.position.set(49, 0, -1); diagGroup.rotation.y = 0.55;
+      const dBody = new THREE.Mesh(new THREE.BoxGeometry(14, 6, 6), wallMat); dBody.position.y = 3; dBody.castShadow = true; diagGroup.add(dBody);
+      const dRoof = new THREE.Mesh(new THREE.BoxGeometry(14.2, 0.35, 6.2), roofMat); dRoof.position.y = 6.18; diagGroup.add(dRoof);
+      for (let x = -4.5; x <= 4.5; x += 3) {
+        const w = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.2, 0.16), winMat); w.position.set(x, 3.8, -3.05); diagGroup.add(w);
+      }
+      scene.add(diagGroup);
+      registerDestructibleProp(diagGroup, 'aux', [0xdbe2ea, 0x4f8c70, 0x93c5fd], [49, 3, -1]);
+
+      // 본관-한영고 사이 보조 건물 (창문 + 캐노피 + 초록 옥상)
+      const midGroup = new THREE.Group();
+      midGroup.position.set(-10, 0, 5.5);
+      const mBody = new THREE.Mesh(new THREE.BoxGeometry(22, 5.5, 5.2), wallMat); mBody.position.y = 2.75; mBody.castShadow = true; midGroup.add(mBody);
+      const mRoof = new THREE.Mesh(new THREE.BoxGeometry(22.3, 0.35, 5.5), roofMat); mRoof.position.y = 5.68; midGroup.add(mRoof);
+      const mCanopy = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.3, 1.4), canopyMat); mCanopy.position.set(0, 2.2, -3.2); midGroup.add(mCanopy);
+      for (let x = -8; x <= 8; x += 3.2) {
+        const w1 = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.1, 0.16), winMat); w1.position.set(x, 3.8, -2.65); midGroup.add(w1);
+        const w2 = w1.clone(); w2.position.z = 2.65; midGroup.add(w2);
+      }
+      scene.add(midGroup);
+      registerDestructibleProp(midGroup, 'aux', [0xdbe2ea, 0x4f8c70, 0x93c5fd], [-10, 2.75, 5.5]);
+
+      // 한영고등학교 (창문 + 출입구 캐노피 + 초록 방수 옥상, HP 50)
+      const hsGroup = new THREE.Group();
+      const hsBody = new THREE.Mesh(new THREE.BoxGeometry(32, 7.2, 6.2), wallMat);
+      hsBody.position.set(-10, 3.6, 16); hsBody.castShadow = true; hsGroup.add(hsBody);
+      const hsRoof = new THREE.Mesh(new THREE.BoxGeometry(32.3, 0.4, 6.5), roofMat);
+      hsRoof.position.set(-10, 7.4, 16); hsGroup.add(hsRoof);
+      const hsCanopy = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.35, 1.8), canopyMat);
+      hsCanopy.position.set(-10, 2.4, 12.2); hsGroup.add(hsCanopy);
+      for (let floor = 0; floor < 2; floor++) {
+        for (let x = -23; x <= 3; x += 3.2) {
+          const w1 = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.15, 0.16), winMat);
+          w1.position.set(x, 2.8 + floor * 2.4, 12.85); hsGroup.add(w1);
+          const w2 = w1.clone(); w2.position.z = 19.15; hsGroup.add(w2);
+        }
+      }
+      scene.add(hsGroup);
+      registerDestructible('highschool', '한영고등학교', hsGroup, 50, [-10, 0, 16], 10, true);
+    }
+
+    function buildPerimeterTreesAndLamps() {
+      const treeCoords = [
+        [-22, -24.5], [-10, -24.5], [4, -24.5], [16, -24.5], [32, -24.5],
+        [44, -23.5], [56, -22], [58, -10], [56, 10],
+        [-36, -15], [-36, -5], [-36, 10], [-36, 20],
+        [-58, -10], [-58, 14], [10, 18], [26, 18], [38, 16]
+      ];
+      treeCoords.forEach(([x, z], idx) => {
+        const scale = 0.95 + (idx % 3) * 0.25, isPine = idx % 3 === 0;
+        const tree = isPine ? createPineTree(x, 0, z, scale) : createDeciduousTree(x, 0, z, scale);
+        scene.add(tree);
+        registerDestructibleProp(tree, 'tree', isPine ? [0x166534, 0x15803d, 0x5c3a21] : [0x5c9624, 0x65a30d, 0x78350f], [x, 1.5, z]);
+      });
+
+      for (let i = 0; i < 32; i++) {
+        const x = -64 + Math.random() * 126, z = 27 + Math.random() * 13, y = 1.5 + Math.random() * 5.0;
+        const isPine = i % 3 === 0;
+        const tree = isPine ? createPineTree(x, y, z, 0.9 + Math.random() * 0.8) : createDeciduousTree(x, y, z, 0.9 + Math.random() * 0.8);
+        scene.add(tree);
+        registerDestructibleProp(tree, 'tree', isPine ? [0x166534, 0x15803d, 0x5c3a21] : [0x5c9624, 0x65a30d, 0x78350f], [x, y + 1.5, z]);
+      }
+
+      [[-22, -16], [-10, -16], [4, -16], [14, -16], [28, -16], [38, -10], [16, -5], [32, -5]].forEach(([x, z]) => {
+        const lamp = createStreetLamp(x, z);
+        scene.add(lamp);
+        registerDestructibleProp(lamp, 'lamp', [0x334155, 0x64748b, 0xfef08a], [x, 1.8, z]);
+      });
+    }
+
+    // =========================================================================
+    // 6. 걸어다니는 3D 학생 24명 (팔·다리 애니메이션 + 공격 시 도망)
+    // =========================================================================
+    function buildWalkingStudents() {
+      const routes = [
+        // 본관 앞 마당
+        [[-23, -11.5], [4, -11.5]], [[-20, -13.5], [2, -13.5]],
+        // 장군산길
+        [[-28, -20.5], [34, -20.5]], [[-40, -20.5], [-10, -20.5]],
+        // 주차장 주변
+        [[10, -17.5], [36, -17.5]], [[10, -6.5], [36, -6.5]],
+        // 공학관 단상 앞
+        [[14, -4.2], [38, -4.2]], [[18, -3.5], [34, -3.5]],
+        // 보건관 앞
+        [[39.5, -16], [39.5, -4]], [[38, -18], [44, -18]],
+        // 운동장
+        [[-52, -6], [-40, 14]], [[-40, -6], [-52, 14]],
+        // CU 앞
+        [[5.5, -9.5], [9.5, -1.5]], [[8.5, -12], [8.5, -6]]
+      ];
+      const shirtColors = [0x3b82f6, 0xef4444, 0x10b981, 0xf59e0b, 0x8b5cf6, 0xec4899, 0x06b6d4, 0xf8fafc, 0x334155];
+      const bagColors = [0x1e293b, 0x991b1b, 0x1e40af, 0x065f46, 0x78350f];
+      const skinMat = new THREE.MeshStandardMaterial({ color: 0xfde68a, roughness: 0.7 });
+      const pantsMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 });
+
+      for (let i = 0; i < 24; i++) {
+        const route = routes[i % routes.length];
+        const pA = new THREE.Vector3(route[0][0], 0.16, route[0][1]);
+        const pB = new THREE.Vector3(route[1][0], 0.16, route[1][1]);
+        const tInit = Math.random();
+
+        const g = new THREE.Group();
+        const shirtMat = new THREE.MeshStandardMaterial({ color: shirtColors[i % shirtColors.length], roughness: 0.7 });
+        const bagMat = new THREE.MeshStandardMaterial({ color: bagColors[i % bagColors.length], roughness: 0.8 });
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 8), skinMat); head.position.y = 1.48; g.add(head);
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.58, 0.28), shirtMat); torso.position.y = 0.96; torso.castShadow = true; g.add(torso);
+        const bag = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.42, 0.18), bagMat); bag.position.set(0, 0.98, -0.2); g.add(bag);
+
+        const armL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.48, 0.14), shirtMat); armL.position.set(-0.31, 0.94, 0); g.add(armL);
+        const armR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.48, 0.14), shirtMat); armR.position.set(0.31, 0.94, 0); g.add(armR);
+        const legL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.54, 0.16), pantsMat); legL.position.set(-0.13, 0.4, 0); g.add(legL);
+        const legR = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.54, 0.16), pantsMat); legR.position.set(0.13, 0.4, 0); g.add(legR);
+
+        g.position.lerpVectors(pA, pB, tInit);
+        scene.add(g);
+
+        students.push({
+          group: g, armL, armR, legL, legR, pA, pB,
+          dir: i % 2 === 0 ? 1 : -1,
+          speed: 2.0 + Math.random() * 1.4,
+          phase: Math.random() * Math.PI * 2,
+          panicTime: 0,
+          panicDir: new THREE.Vector3()
+        });
+      }
+    }
+
+    function panicStudentsNear(hitPoint, radius = 22) {
+      students.forEach((st) => {
+        const dist = Math.hypot(st.group.position.x - hitPoint.x, st.group.position.z - hitPoint.z);
+        if (dist < radius) {
+          st.panicTime = 3.5 + Math.random() * 1.5;
+          st.panicDir.set(st.group.position.x - hitPoint.x, 0, st.group.position.z - hitPoint.z);
+          if (st.panicDir.lengthSq() < 0.01) st.panicDir.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+          st.panicDir.normalize();
+        }
+      });
+    }
+
+    function createMiniCar(colorHex) {
+      const car = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.55, 2.25), new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.4 }));
+      body.position.y = 0.4; body.castShadow = true; car.add(body);
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.42, 1.2), new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.25 }));
+      cabin.position.set(0, 0.84, -0.06); car.add(cabin);
+      const wMat = new THREE.MeshStandardMaterial({ color: 0x0f172a });
+      [[-0.62, 0.62], [0.62, 0.62], [-0.62, -0.62], [0.62, -0.62]].forEach(([wx, wz]) => {
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.15, 10), wMat);
+        w.rotation.z = Math.PI / 2; w.position.set(wx, 0.21, wz); car.add(w);
+      });
+      return car;
+    }
+
+    function createWhiteUniversityBus() {
+      const bus = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(6.2, 1.8, 2.1), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35 }));
+      body.position.y = 1.15; body.castShadow = true; bus.add(body);
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(6.26, 0.25, 2.14), new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.5 }));
+      stripe.position.y = 0.85; bus.add(stripe);
+      const win = new THREE.Mesh(new THREE.BoxGeometry(5.3, 0.6, 2.16), new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.2 }));
+      win.position.y = 1.48; bus.add(win);
+      const wMat = new THREE.MeshStandardMaterial({ color: 0x0f172a });
+      [[-1.9, 1.02], [1.9, 1.02], [-1.9, -1.02], [1.9, -1.02]].forEach(([wx, wz]) => {
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.22, 12), wMat);
+        w.rotation.x = Math.PI / 2; w.position.set(wx, 0.36, wz); bus.add(w);
+      });
+      return bus;
+    }
+
+    function createWoodenPergola() {
+      const g = new THREE.Group(), woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 });
+      [[-2.0, -0.9], [2.0, -0.9], [-2.0, 0.9], [2.0, 0.9]].forEach(([px, pz]) => {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.2, 0.2), woodMat); post.position.set(px, 1.1, pz); g.add(post);
+      });
+      for (let x = -2.0; x <= 2.0; x += 0.5) {
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 2.3), woodMat); slat.position.set(x, 2.3, 0); g.add(slat);
+      }
+      return g;
+    }
+
+    function createDeciduousTree(x, y, z, scale = 1) {
+      const t = new THREE.Group(); t.position.set(x, y, z); t.scale.setScalar(scale);
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.28, 1.8, 7), new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 }));
+      trunk.position.y = 0.9; t.add(trunk);
+      const leaves = new THREE.Mesh(new THREE.DodecahedronGeometry(1.3, 0), new THREE.MeshStandardMaterial({ color: 0x5c9624, roughness: 0.85, flatShading: true }));
+      leaves.position.y = 2.6; leaves.castShadow = true; t.add(leaves);
+      return t;
+    }
+
+    function createPineTree(x, y, z, scale = 1) {
+      const t = new THREE.Group(); t.position.set(x, y, z); t.scale.setScalar(scale);
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.26, 1.4, 7), new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.9 }));
+      trunk.position.y = 0.7; t.add(trunk);
+      const lMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.85, flatShading: true });
+      const c1 = new THREE.Mesh(new THREE.ConeGeometry(1.25, 2.2, 7), lMat); c1.position.y = 2.2; c1.castShadow = true; t.add(c1);
+      const c2 = new THREE.Mesh(new THREE.ConeGeometry(0.9, 1.7, 7), lMat); c2.position.y = 3.4; c2.castShadow = true; t.add(c2);
+      return t;
+    }
+
+    function createStreetLamp(x, z) {
+      const lamp = new THREE.Group(); lamp.position.set(x, 0, z);
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.11, 3.6, 8), new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5 }));
+      pole.position.y = 1.8; lamp.add(pole);
+      const bMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfef08a, emissiveIntensity: 0.15 });
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 10), bMat); bulb.position.y = 3.65; lamp.add(bulb);
+      streetLampBulbs.push(bMat);
+      return lamp;
+    }
+
+    function buildSelectionRing() {
+      selectionRing = new THREE.Mesh(
+        new THREE.RingGeometry(9.2, 10.2, 44),
+        new THREE.MeshBasicMaterial({ color: 0x2563eb, side: THREE.DoubleSide, transparent: true, opacity: 0.5 })
+      );
+      selectionRing.rotation.x = -Math.PI / 2; selectionRing.visible = false; scene.add(selectionRing);
+    }
+
+    // =========================================================================
+    // 7. 부수기 모드 무기 & 파괴 물리
+    // =========================================================================
+    function triggerWeaponOnTarget(targetId, hitPoint, directProp = null) {
+      const target = targetId ? destructibles[targetId] : null;
+      if (currentWeapon === 'meteor') launchMeteor(target, hitPoint, directProp);
+      else if (currentWeapon === 'laser') fireOrbitalLaser(target, hitPoint, directProp);
+      else if (currentWeapon === 'bomb') dropBomb(target, hitPoint, directProp);
+      else if (currentWeapon === 'quake') triggerEarthquake();
+    }
+
+    function launchMeteor(target, hitPoint, directProp) {
+      const mg = new THREE.Group();
+      mg.add(new THREE.Mesh(new THREE.DodecahedronGeometry(2.1, 0), new THREE.MeshStandardMaterial({ color: 0xff4500, emissive: 0xff6a00, emissiveIntensity: 1.8, roughness: 0.6 })));
+      const startPos = new THREE.Vector3(hitPoint.x - 24, hitPoint.y + 48, hitPoint.z - 18);
+      mg.position.copy(startPos); scene.add(mg);
+      activeProjectiles.push({
+        mesh: mg, start: startPos, end: hitPoint.clone(), progress: 0, speed: 3.2,
+        onImpact: () => {
+          SoundFX.playExplosion(1.25);
+          screenShakeIntensity = Math.max(screenShakeIntensity, 1.35);
+          spawnShockwave(hitPoint, 0xff5500, 19);
+          spawnDebris(hitPoint, 24, [0x475569, 0xff6a00, 0xfbbf24, 0x1e293b]);
+          if (hitPoint.y <= 3.8 || !target || target.id === 'ground') spawnGroundCrack(hitPoint, 9.0);
+          if (directProp) destroyProp(directProp);
+          damagePropsInRadius(hitPoint, 9.5);
+          panicStudentsNear(hitPoint, 26);
+          if (target) applyDamage(target, 45, hitPoint, 7.0);
+          Object.values(destructibles).forEach((o) => {
+            if ((!target || o.id !== target.id) && !o.destroyed && o.countInProgress && o.center.distanceTo(hitPoint) < 20) {
+              applyDamage(o, 20, o.center.clone(), 5.0);
+            }
+          });
+        }
+      });
+    }
+
+    function fireOrbitalLaser(target, hitPoint, directProp) {
+      SoundFX.playLaser();
+      screenShakeIntensity = Math.max(screenShakeIntensity, 1.2);
+      const boltGroup = new THREE.Group();
+      const top = hitPoint.clone().add(new THREE.Vector3(0, 46, 0));
+      const pts = [top];
+      for (let i = 1; i < 10; i++) {
+        const t = i / 10;
+        pts.push(new THREE.Vector3(
+          THREE.MathUtils.lerp(top.x, hitPoint.x, t) + (Math.random() - 0.5) * 5.5,
+          THREE.MathUtils.lerp(top.y, hitPoint.y, t),
+          THREE.MathUtils.lerp(top.z, hitPoint.z, t) + (Math.random() - 0.5) * 4.5
+        ));
+      }
+      pts.push(hitPoint.clone());
+      const curve = new THREE.CatmullRomCurve3(pts);
+      boltGroup.add(
+        new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.55, 7, false), new THREE.MeshBasicMaterial({ color: 0x9333ea, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false })),
+        new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.24, 7, false), new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.92, blending: THREE.AdditiveBlending, depthWrite: false })),
+        new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.1, 6, false), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false }))
+      );
+      scene.add(boltGroup);
+      activeEffects.push({
+        mesh: boltGroup, life: 0.45, maxLife: 0.45,
+        update(dt, r) {
+          boltGroup.visible = r > 0.12 && Math.random() > 0.08;
+          boltGroup.children.forEach((p) => { if (p.material) p.material.opacity = r; });
+        }
+      });
+      spawnShockwave(hitPoint, 0x22d3ee, 15);
+      spawnDebris(hitPoint, 22, [0x22d3ee, 0xe879f9, 0x94a3b8, 0x334155]);
+      if (hitPoint.y <= 3.8 || !target || target.id === 'ground') spawnGroundCrack(hitPoint, 6.2);
+      if (directProp) destroyProp(directProp);
+      damagePropsInRadius(hitPoint, 6.5);
+      panicStudentsNear(hitPoint, 20);
+      if (target) applyDamage(target, 38, hitPoint, 4.8);
+    }
+
+    function dropBomb(target, hitPoint, directProp) {
+      const bomb = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.75, 14, 10), new THREE.MeshStandardMaterial({ color: 0x222831, metalness: 0.55, roughness: 0.35 }));
+      body.scale.set(0.78, 1.35, 0.78); bomb.add(body);
+      const finMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.5 });
+      for (let i = 0; i < 4; i++) {
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.75, 0.45), finMat);
+        fin.position.y = 0.68; fin.rotation.y = (i * Math.PI) / 2; bomb.add(fin);
+      }
+      const startPos = hitPoint.clone().add(new THREE.Vector3(-3, 28, -2));
+      bomb.position.copy(startPos); scene.add(bomb);
+      activeProjectiles.push({
+        mesh: bomb, start: startPos, end: hitPoint.clone(), progress: 0, speed: 2.0,
+        onImpact: () => {
+          SoundFX.playExplosion(1.15);
+          screenShakeIntensity = Math.max(screenShakeIntensity, 1.2);
+          spawnShockwave(hitPoint, 0xffa31a, 17);
+          spawnDebris(hitPoint, 26, [0x64748b, 0x334155, 0xf97316, 0x93c5fd]);
+          if (hitPoint.y <= 3.8 || !target || target.id === 'ground') spawnGroundCrack(hitPoint, 7.6);
+          if (directProp) destroyProp(directProp);
+          damagePropsInRadius(hitPoint, 7.5);
+          panicStudentsNear(hitPoint, 22);
+          if (target) applyDamage(target, 40, hitPoint, 6.0);
+        }
+      });
+    }
+
+    function triggerEarthquake() {
+      SoundFX.playQuake();
+      screenShakeIntensity = 2.0;
+      for (let i = 0; i < 6; i++) spawnGroundCrack(new THREE.Vector3(-48 + Math.random() * 100, 0.2, -22 + Math.random() * 40), 6.5 + Math.random() * 4.5);
+      destructibleProps.forEach((p) => { if (!p.destroyed && Math.random() < 0.45) destroyProp(p); });
+      panicStudentsNear(new THREE.Vector3(0, 0, 0), 120);
+
+      Object.values(destructibles).forEach((d) => {
+        if (!d.destroyed && d.countInProgress) {
+          const pt = d.center.clone().add(new THREE.Vector3(0, 4, 0));
+          spawnDebris(pt, 12, [0x64748b, 0x475569, 0x94a3b8]);
+          if (d.cells && d.cells.size > 0) {
+            const unbroken = Array.from(d.cells.values()).filter((c) => !c.broken);
+            const toBreak = Math.max(1, Math.ceil(d.cells.size * 0.36));
+            for (let i = 0; i < Math.min(toBreak, unbroken.length); i++) {
+              const cell = unbroken[Math.floor(Math.random() * unbroken.length)];
+              if (!cell.broken) { d.hp = Math.max(0, d.hp - cell.hp); breakCellParts(cell, pt); }
+            }
+            if (d.hp / d.maxHp <= 0.4) collapseTarget(d, pt);
+            updateTargetHpUI(d);
+          } else {
+            applyDamage(d, Math.ceil(d.maxHp * 0.45), pt, 4.0);
+          }
+        }
+      });
+      bumpCombo();
+      updateDestructionHUD();
+    }
+
+    function breakCellParts(cell, impactPoint) {
+      cell.broken = true; cell.hp = 0;
+      [...cell.parts, ...(cell.structureParts || [])].forEach((part) => {
+        if (!part.visible) return;
+        part.updateWorldMatrix(true, false);
+        const pos = part.getWorldPosition(new THREE.Vector3());
+        part.visible = false;
+        if (debrisParticles.length < 220) {
+          const shard = part.clone(); shard.position.copy(pos); shard.userData = {}; scene.add(shard);
+          const dir = pos.clone().sub(impactPoint).normalize();
+          debrisParticles.push({
+            mesh: shard,
+            vel: dir.multiplyScalar(5 + Math.random() * 7).add(new THREE.Vector3((Math.random() - 0.5) * 6, 4 + Math.random() * 9, (Math.random() - 0.5) * 6)),
+            rotVel: new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8),
+            life: 1.2 + Math.random() * 0.4
+          });
+        }
+      });
+    }
+
+    function collapseTarget(target, impactPoint) {
+      if (target.destroyed) return;
+      target.destroyed = true; target.hp = 0; target.group.visible = false;
+      const box = new THREE.Box3().setFromObject(target.group), size = box.getSize(new THREE.Vector3());
+      const count = target.countInProgress ? 34 : 14;
+      const srcMats = target.meshes.map((m) => m.material).filter(Boolean);
+      for (let i = 0; i < count; i++) {
+        if (debrisParticles.length > 260) scene.remove(debrisParticles.shift().mesh);
+        const src = srcMats[Math.floor(Math.random() * srcMats.length)];
+        const mat = new THREE.MeshStandardMaterial({ color: src && src.color ? src.color.clone().multiplyScalar(0.8) : 0x64748b, roughness: 0.85 });
+        const chunk = new THREE.Mesh(sharedBoxGeo, mat);
+        chunk.scale.set(Math.max(0.4, size.x / 7) * 0.7, Math.max(0.4, size.y / 5) * 0.7, Math.max(0.4, size.z / 4) * 0.7);
+        chunk.position.set(box.min.x + Math.random() * Math.max(1, size.x), Math.max(0.8, box.min.y + Math.random() * Math.max(1, size.y)), box.min.z + Math.random() * Math.max(1, size.z));
+        scene.add(chunk);
+        const out = chunk.position.clone().sub(impactPoint).normalize();
+        debrisParticles.push({
+          mesh: chunk,
+          vel: out.multiplyScalar(5 + Math.random() * 9).add(new THREE.Vector3((Math.random() - 0.5) * 6, 6 + Math.random() * 10, (Math.random() - 0.5) * 6)),
+          rotVel: new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8),
+          life: 2.0 + Math.random() * 1.0
+        });
+      }
+      SoundFX.playExplosion(1.4);
+      screenShakeIntensity = Math.max(screenShakeIntensity, 1.7);
+      spawnShockwave(impactPoint, 0xff6a00, 22);
+      updateTargetHpUI(target);
+      updateDestructionHUD();
+    }
+
+    function applyDamage(target, amount, hitPoint, splashRadius = 6.0) {
+      if (!target || target.destroyed) return;
+      if (target.cells && target.cells.size > 0) {
+        const localHit = target.group.worldToLocal(hitPoint.clone());
+        let hitAny = false;
+        target.cells.forEach((cell) => {
+          if (cell.broken) return;
+          const dist = cell.center.distanceTo(localHit);
+          if (dist <= splashRadius) {
+            hitAny = true;
+            const dmg = amount * Math.max(0.45, 1 - dist / (splashRadius * 1.25));
+            const applied = Math.min(cell.hp, dmg);
+            cell.hp = Math.max(0, cell.hp - applied);
+            target.hp = Math.max(0, target.hp - applied);
+            if (cell.hp <= 0) breakCellParts(cell, hitPoint);
+          }
+        });
+        if (!hitAny) {
+          let best = null, bestD = Infinity;
+          target.cells.forEach((c) => { if (!c.broken) { const d = c.center.distanceTo(localHit); if (d < bestD) { bestD = d; best = c; } } });
+          if (best) {
+            const applied = Math.min(best.hp, amount);
+            best.hp -= applied; target.hp = Math.max(0, target.hp - applied);
+            if (best.hp <= 0) breakCellParts(best, hitPoint);
+          }
+        }
+        if (target.countInProgress && target.hp / target.maxHp <= 0.4) collapseTarget(target, hitPoint);
+      } else {
+        target.hp = Math.max(0, target.hp - amount);
+        if (target.hp <= 0) collapseTarget(target, hitPoint);
+      }
+      bumpCombo();
+      updateTargetHpUI(target);
+      updateDestructionHUD();
+    }
+
+    function spawnShockwave(pos, colorHex, maxScale) {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 1.3, 24), new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 0.9 }));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(pos.x, Math.max(0.4, pos.y * 0.4), pos.z); scene.add(ring);
+      activeEffects.push({
+        mesh: ring, life: 0.42, maxLife: 0.42,
+        update(dt, r) { const s = 1 + (1 - r) * maxScale; ring.scale.set(s, s, 1); ring.material.opacity = r * 0.85; }
+      });
+    }
+
+    function spawnDebris(origin, count, colorList) {
+      for (let i = 0; i < count; i++) {
+        if (debrisParticles.length > 260) scene.remove(debrisParticles.shift().mesh);
+        const s = 0.4 + Math.random() * 0.85;
+        const mesh = new THREE.Mesh(sharedBoxGeo, new THREE.MeshStandardMaterial({ color: colorList[Math.floor(Math.random() * colorList.length)], roughness: 0.75 }));
+        mesh.scale.set(s, s * 0.8, s);
+        mesh.position.copy(origin).add(new THREE.Vector3((Math.random() - 0.5) * 3, Math.random() * 2.5, (Math.random() - 0.5) * 3));
+        scene.add(mesh);
+        debrisParticles.push({
+          mesh,
+          vel: new THREE.Vector3((Math.random() - 0.5) * 18, 7 + Math.random() * 14, (Math.random() - 0.5) * 18),
+          rotVel: new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8),
+          life: 0.75 + Math.random() * 0.45
+        });
+      }
+    }
+
+    function spawnSmokeOrFire(origin, isFire) {
+      if (smokeParticles.length > 80) return;
+      const mesh = new THREE.Mesh(sharedSphereGeo, new THREE.MeshBasicMaterial({ color: isFire ? (Math.random() > 0.5 ? 0xf97316 : 0xfacc15) : 0x334155, transparent: true, opacity: isFire ? 0.85 : 0.48 }));
+      mesh.scale.setScalar(isFire ? 0.55 : 0.9);
+      mesh.position.copy(origin).add(new THREE.Vector3((Math.random() - 0.5) * 4, 0.8 + Math.random(), (Math.random() - 0.5) * 4));
+      scene.add(mesh);
+      smokeParticles.push({ mesh, velY: isFire ? 4.0 : 2.3, life: isFire ? 0.5 : 1.3, maxLife: isFire ? 0.5 : 1.3, isFire });
+    }
+
+    function updateTargetHpUI(target) {
+      if (!target.countInProgress) return;
+      const fill = target.hpEl.querySelector('.hp-fill');
+      const barWrap = target.hpEl.querySelector('.hp-bar-wrap');
+      const badge = target.hpEl.querySelector('.hp-badge');
+      const pct = Math.max(0, (target.hp / target.maxHp) * 100);
+      if (target.destroyed) { barWrap.classList.add('hidden'); badge.classList.remove('hidden'); }
+      else {
+        barWrap.classList.remove('hidden'); badge.classList.add('hidden');
+        fill.style.width = `${pct}%`;
+        fill.className = `hp-fill h-full transition-all duration-150 ${pct > 50 ? 'bg-emerald-400' : pct > 25 ? 'bg-amber-400' : 'bg-rose-500'}`;
+      }
+    }
+
+    function updateDestructionHUD() {
+      let totalMax = 0, totalLost = 0;
+      Object.values(destructibles).forEach((d) => { if (!d.countInProgress) return; totalMax += d.maxHp; totalLost += (d.maxHp - d.hp); });
+      const pct = totalMax > 0 ? Math.round((totalLost / totalMax) * 100) : 0;
+      document.getElementById('destruction-percent').textContent = `${pct}%`;
+      document.getElementById('destruction-bar').style.width = `${pct}%`;
+      if (pct >= 100 && !victoryShown) {
+        victoryShown = true;
+        setTimeout(() => document.getElementById('victory-overlay').classList.remove('hidden'), 500);
+      }
+    }
+
+    function restoreCampus() {
+      comboCount = 0; victoryShown = false;
+      document.getElementById('combo-count').textContent = '0';
+      document.getElementById('victory-overlay').classList.add('hidden');
+      Object.values(destructibles).forEach((d) => {
+        d.hp = d.maxHp; d.destroyed = false; d.group.visible = true;
+        d.group.position.copy(d.basePos); d.group.rotation.copy(d.baseRot);
+        d.hpEl.classList.add('hidden');
+        if (d.cells) d.cells.forEach((c) => { c.hp = c.maxHp; c.broken = false; });
+        d.meshes.forEach((m) => { m.visible = true; });
+        updateTargetHpUI(d);
+      });
+      while (debrisParticles.length > 0) scene.remove(debrisParticles.pop().mesh);
+      while (smokeParticles.length > 0) scene.remove(smokeParticles.pop().mesh);
+      while (activeProjectiles.length > 0) scene.remove(activeProjectiles.pop().mesh);
+      while (activeEffects.length > 0) scene.remove(activeEffects.pop().mesh);
+      while (groundCracks.length > 0) { const c = groundCracks.pop(); scene.remove(c); c.geometry.dispose(); c.material.dispose(); }
+      destructibleProps.forEach((p) => { p.destroyed = false; p.group.visible = true; });
+      students.forEach((st) => { st.panicTime = 0; st.group.position.copy(st.pA); });
+      screenShakeIntensity = 0;
+      updateDestructionHUD();
+    }
+
+    // =========================================================================
+    // 8. UI, 이벤트 및 메인 애니메이션 루프
+    // =========================================================================
+    function setMode(mode) {
+      currentMode = mode;
+      if (attackAimRing) attackAimRing.visible = mode === 'smash';
+      const bt = document.getElementById('mode-tour'), bs = document.getElementById('mode-smash');
+      if (mode === 'smash') {
+        closePanel('all');
+        bs.className = 'px-3 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow-sm';
+        bt.className = 'px-3 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all text-white/80 hover:text-white';
+        document.getElementById('smash-hud').classList.remove('hidden');
+        document.getElementById('tour-nav').classList.add('hidden');
+        document.getElementById('smash-nav').classList.remove('hidden');
+        document.getElementById('btn-sound').classList.remove('hidden');
+      } else {
+        bt.className = 'px-3 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all bg-white text-blue-900 shadow-sm';
+        bs.className = 'px-3 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all text-white/80 hover:text-white';
+        document.getElementById('smash-hud').classList.add('hidden');
+        document.getElementById('tour-nav').classList.remove('hidden');
+        document.getElementById('smash-nav').classList.add('hidden');
+        document.getElementById('btn-sound').classList.add('hidden');
+        document.getElementById('victory-overlay').classList.add('hidden');
+      }
+    }
+
+    function buildUI() {
+      const quickNav = document.getElementById('quick-nav'), lc = document.getElementById('labels-container');
+      const addBtn = (id, emoji, text, active, onClick) => {
+        const b = document.createElement('button'); b.type = 'button'; b.dataset.id = id;
+        b.className = active
+          ? 'quick-btn flex-shrink-0 flex items-center gap-1.5 bg-blue-900 text-white px-3.5 py-2 rounded-full text-xs sm:text-sm font-bold shadow-sm transition active:scale-95'
+          : 'quick-btn flex-shrink-0 flex items-center gap-1.5 bg-white/90 hover:bg-white text-slate-700 px-3.5 py-2 rounded-full text-xs sm:text-sm font-bold border border-slate-200/80 transition active:scale-95';
+        b.innerHTML = `<span>${emoji}</span><span>${text}</span>`;
+        b.addEventListener('click', onClick);
+        quickNav.appendChild(b);
+      };
+      addBtn('all', '🗺️', '전체', true, () => moveCameraPreset('all'));
+      addBtn('map', '🛰️', '지도 시점(위에서)', false, () => moveCameraPreset('map'));
+      ['parking', 'main', 'engineering', 'health'].forEach((k) => {
+        const item = CAMPUS_DATA[k];
+        addBtn(item.id, item.emoji, item.shortName, false, () => selectZone(item.id));
+        const lbl = document.createElement('div');
+        lbl.className = 'floating-label flex items-center gap-1.5 bg-white/92 hover:bg-white backdrop-blur-md px-3 py-1 rounded-full shadow-md border border-slate-200/90 text-xs font-extrabold text-slate-800';
+        lbl.innerHTML = `<span class="text-sm">${item.emoji}</span><span>${item.shortName}</span>`;
+        lbl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (currentMode === 'tour') selectZone(item.id);
+          else if (destructibles[item.id]) triggerWeaponOnTarget(item.id, destructibles[item.id].center.clone().add(new THREE.Vector3(0, 5, 0)));
+        });
+        lc.appendChild(lbl);
+        labelElements[item.id] = lbl;
+      });
+      CONTEXT_LABELS.forEach((c) => {
+        const el = document.createElement('div');
+        el.className = 'context-label px-2 py-0.5 rounded-full bg-slate-800/55 backdrop-blur-sm text-[10px] font-bold text-white/95 shadow-sm';
+        el.textContent = c.text;
+        lc.appendChild(el);
+        contextLabelElements.push({ el, pos: c.pos });
+      });
+    }
+
+    function moveCameraPreset(key) {
+      closePanel(key);
+      targetCamPos.set(...CAMERA_PRESETS[key].pos);
+      targetLookAt.set(...CAMERA_PRESETS[key].lookAt);
+      isCameraAnimating = true;
+    }
+
+    function selectZone(id) {
+      const data = CAMPUS_DATA[id]; if (!data) return;
+      selectedId = id;
+      targetCamPos.set(...data.cameraPos); targetLookAt.set(...data.lookAt); isCameraAnimating = true;
+      if (selectionRing && data.ringPos) { selectionRing.position.set(...data.ringPos); selectionRing.visible = true; }
+      updateQuickNavStyle(id); renderInfoPanel(data);
+      const panel = document.getElementById('info-panel');
+      panel.classList.remove('translate-y-full', 'md:translate-x-[120%]', 'opacity-0', 'pointer-events-none');
+      panel.classList.add('translate-y-0', 'md:translate-x-0', 'opacity-100', 'pointer-events-auto');
+      if (window.innerWidth < 768) document.getElementById('tour-nav').classList.add('opacity-0', 'pointer-events-none');
+    }
+
+    function closePanel(activeNavId = 'all') {
+      selectedId = null; if (selectionRing) selectionRing.visible = false;
+      updateQuickNavStyle(activeNavId);
+      const panel = document.getElementById('info-panel');
+      panel.classList.add('translate-y-full', 'md:translate-x-[120%]', 'opacity-0', 'pointer-events-none');
+      panel.classList.remove('translate-y-0', 'md:translate-x-0', 'opacity-100', 'pointer-events-auto');
+      document.getElementById('tour-nav').classList.remove('opacity-0', 'pointer-events-none');
+    }
+
+    function updateQuickNavStyle(activeId) {
+      document.querySelectorAll('.quick-btn').forEach((b) => {
+        const a = b.dataset.id === activeId;
+        b.classList.toggle('bg-blue-900', a); b.classList.toggle('text-white', a);
+        b.classList.toggle('bg-white/90', !a); b.classList.toggle('text-slate-700', !a);
+      });
+    }
+
+    function renderInfoPanel(data) {
+      const b = document.getElementById('panel-badge');
+      b.textContent = data.badge; b.className = `inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold ${data.badgeColor}`;
+      document.getElementById('panel-walk').textContent = `🚶 ${data.walkTime}`;
+      document.getElementById('panel-title').textContent = `${data.emoji} ${data.name}`;
+      document.getElementById('panel-desc').textContent = data.summary;
+      document.getElementById('panel-landmarks').innerHTML = data.landmarks.map((lm) => `<span class="flex-shrink-0 inline-flex items-center px-2.5 py-1 rounded-full bg-white border border-blue-200/80 text-[11px] font-bold text-blue-900 shadow-sm">${lm}</span>`).join('');
+      const tabsEl = document.getElementById('floor-tabs'); tabsEl.innerHTML = '';
+      data.floors.forEach((fl, idx) => {
+        const tab = document.createElement('button'); tab.type = 'button'; tab.textContent = fl.label;
+        tab.className = idx === 0
+          ? 'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-blue-900 text-white shadow-sm transition'
+          : 'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-200 hover:bg-slate-100 transition';
+        tab.addEventListener('click', () => {
+          Array.from(tabsEl.children).forEach((btn, i) => {
+            btn.className = i === idx
+              ? 'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-blue-900 text-white shadow-sm transition'
+              : 'flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-200 hover:bg-slate-100 transition';
+          });
+          renderFloorDetail(fl);
+        });
+        tabsEl.appendChild(tab);
+      });
+      renderFloorDetail(data.floors[0]);
+    }
+
+    function renderFloorDetail(floor) {
+      document.getElementById('floor-content').innerHTML = `
+        <div>
+          <h3 class="text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-2.5">📍 ${floor.label} 주요 시설 안내</h3>
+          <ul class="space-y-2">${floor.facilities.map((fac) => `
+            <li class="flex items-center gap-2.5 bg-slate-50 rounded-2xl px-3.5 py-2.5 border border-slate-100 shadow-sm">
+              <span class="w-2 h-2 rounded-full bg-blue-600 flex-shrink-0"></span>
+              <span class="text-xs sm:text-sm font-bold text-slate-800">${fac}</span>
+            </li>`).join('')}
+          </ul>
+        </div>`;
+    }
+
+    function toggleTheme() {
+      isSunset = !isSunset;
+      document.getElementById('theme-icon').textContent = isSunset ? '🌇' : '☀️';
+      document.getElementById('theme-text').textContent = isSunset ? '노을 모드' : '낮 모드';
+      scene.background.setHex(isSunset ? 0xfdba74 : 0xcde5fc);
+      scene.fog.color.setHex(isSunset ? 0xfdba74 : 0xcde5fc);
+      dirLight.color.setHex(isSunset ? 0xffedd5 : 0xfffbeb);
+      dirLight.intensity = isSunset ? 1.1 : 0.95;
+      dirLight.position.set(isSunset ? -55 : 45, isSunset ? 28 : 75, isSunset ? -35 : -50);
+      streetLampBulbs.forEach((m) => (m.emissiveIntensity = isSunset ? 1.6 : 0.15));
+    }
+
+    function bindEvents() {
+      const dom = renderer.domElement;
+      dom.addEventListener('pointerdown', (e) => { pointerDownPos.x = e.clientX; pointerDownPos.y = e.clientY; });
+      dom.addEventListener('pointermove', (e) => {
+        if (!attackAimRing || currentMode !== 'smash') return;
+        pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+        pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(pointer, camera);
+        const targets = Object.values(destructibles).filter((d) => !d.destroyed).map((d) => d.group);
+        const hits = raycaster.intersectObjects(targets, true);
+        let pt = null, normal = new THREE.Vector3(0, 1, 0);
+        if (hits.length) {
+          pt = hits[0].point.clone();
+          if (hits[0].face) normal.copy(hits[0].face.normal).applyMatrix3(new THREE.Matrix3().getNormalMatrix(hits[0].object.matrixWorld)).normalize();
+        } else {
+          pt = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
+        }
+        attackAimRing.visible = !!pt;
+        if (pt) {
+          attackAimRing.position.copy(pt).addScaledVector(normal, 0.08);
+          attackAimRing.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+          attackAimRing.scale.setScalar((weaponRadii[currentWeapon] || 6.0) * 0.4);
+          attackAimRing.material.color.setHex(currentWeapon === 'laser' ? 0x67e8f9 : currentWeapon === 'bomb' ? 0xff5b35 : 0xffb21a);
+        }
+      });
+      dom.addEventListener('pointerleave', () => { if (attackAimRing) attackAimRing.visible = false; });
+
+      dom.addEventListener('pointerup', (e) => {
+        if (Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y) > 8) return;
+        pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+        pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(pointer, camera);
+
+        if (currentMode === 'tour') {
+          const hits = raycaster.intersectObjects(Object.values(tourZones).map((z) => z.group), true);
+          if (hits.length > 0 && hits[0].object.userData.tourId) selectZone(hits[0].object.userData.tourId);
+        } else {
+          const bTargets = Object.values(destructibles).filter((d) => !d.destroyed).map((d) => d.group);
+          const pTargets = destructibleProps.filter((p) => !p.destroyed).map((p) => p.group);
+          const hits = raycaster.intersectObjects([...bTargets, ...pTargets], true);
+          const hit = hits.find((it) => it.object.visible && (it.object.userData.smashId || it.object.userData.propIndex !== undefined));
+          if (hit) {
+            if (hit.object.userData.propIndex !== undefined) triggerWeaponOnTarget(null, hit.point, destructibleProps[hit.object.userData.propIndex]);
+            else triggerWeaponOnTarget(hit.object.userData.smashId, hit.point, null);
+          } else {
+            const pt = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
+            if (pt) triggerWeaponOnTarget(null, pt, null);
+          }
+        }
+      });
+
+      document.getElementById('mode-tour').addEventListener('click', () => setMode('tour'));
+      document.getElementById('mode-smash').addEventListener('click', () => setMode('smash'));
+      document.getElementById('btn-theme').addEventListener('click', toggleTheme);
+      document.getElementById('btn-close-panel').addEventListener('click', () => closePanel('all'));
+      document.getElementById('btn-restore').addEventListener('click', restoreCampus);
+      document.getElementById('btn-victory-restore').addEventListener('click', restoreCampus);
+      document.getElementById('btn-victory-close').addEventListener('click', () => document.getElementById('victory-overlay').classList.add('hidden'));
+      document.getElementById('btn-sound').addEventListener('click', () => {
+        SoundFX.muted = !SoundFX.muted;
+        document.getElementById('btn-sound').textContent = SoundFX.muted ? '🔇' : '🔊';
+      });
+      document.querySelectorAll('.weapon-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const w = btn.dataset.weapon;
+          if (w === 'quake') { triggerEarthquake(); return; }
+          currentWeapon = w;
+          document.querySelectorAll('.weapon-btn').forEach((b) => {
+            if (b.dataset.weapon === 'quake') return;
+            const a = b.dataset.weapon === w;
+            b.className = a
+              ? 'weapon-btn flex flex-col sm:flex-row items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-2 rounded-2xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 bg-gradient-to-r from-orange-500 to-rose-600 text-white shadow-lg ring-2 ring-amber-300'
+              : 'weapon-btn flex flex-col sm:flex-row items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-2 rounded-2xl text-xs sm:text-sm font-extrabold transition-all active:scale-95 bg-white/10 hover:bg-white/20 text-white/90';
+          });
+        });
+      });
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    }
+
+    function updateOverlays() {
+      const v = new THREE.Vector3(), hw = window.innerWidth / 2, hh = window.innerHeight / 2;
+      Object.values(CAMPUS_DATA).forEach((item) => {
+        const el = labelElements[item.id]; if (!el) return;
+        v.set(...item.labelPos).project(camera);
+        if (v.z > 1) { el.style.opacity = '0'; el.style.pointerEvents = 'none'; return; }
+        el.style.opacity = currentMode === 'smash' ? '0.65' : '1';
+        el.style.pointerEvents = 'auto';
+        el.style.transform = `translate(-50%, -50%) translate(${v.x * hw + hw}px, ${-(v.y * hh) + hh}px)`;
+      });
+      contextLabelElements.forEach(({ el, pos }) => {
+        v.set(...pos).project(camera);
+        if (v.z > 1) { el.style.opacity = '0'; return; }
+        el.style.opacity = currentMode === 'smash' ? '0.45' : '0.88';
+        el.style.transform = `translate(-50%, -50%) translate(${v.x * hw + hw}px, ${-(v.y * hh) + hh}px)`;
+      });
+      Object.values(destructibles).forEach((d) => {
+        const show = currentMode === 'smash' && d.countInProgress && (d.hp < d.maxHp || d.destroyed);
+        if (!show) { d.hpEl.classList.add('hidden'); return; }
+        v.copy(d.hpLabelPos).project(camera);
+        if (v.z > 1) { d.hpEl.classList.add('hidden'); return; }
+        d.hpEl.classList.remove('hidden');
+        d.hpEl.style.transform = `translate(-50%, -50%) translate(${v.x * hw + hw}px, ${-(v.y * hh) + hh}px)`;
+      });
+    }
+
+    let lastFrameTime = performance.now();
+    function animate() {
+      requestAnimationFrame(animate);
+      const now = performance.now(), dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+      lastFrameTime = now;
+      const time = now * 0.001;
+
+      if (isCameraAnimating) {
+        camera.position.lerp(targetCamPos, 0.08);
+        controls.target.lerp(targetLookAt, 0.08);
+        if (camera.position.distanceTo(targetCamPos) < 0.18 && controls.target.distanceTo(targetLookAt) < 0.18) isCameraAnimating = false;
+      }
+
+      if (screenShakeIntensity > 0.02) {
+        camera.position.x += (Math.random() - 0.5) * screenShakeIntensity;
+        camera.position.y += (Math.random() - 0.5) * screenShakeIntensity;
+        screenShakeIntensity *= 0.86;
+      }
+
+      // 3D 학생 이동 및 도망 애니메이션
+      students.forEach((st) => {
+        let spd = st.speed;
+        if (st.panicTime > 0) {
+          st.panicTime -= dt;
+          spd = st.speed * 2.8;
+          st.group.position.addScaledVector(st.panicDir, spd * dt);
+          st.group.position.x = THREE.MathUtils.clamp(st.group.position.x, -56, 54);
+          st.group.position.z = THREE.MathUtils.clamp(st.group.position.z, -24, 24);
+          st.group.rotation.y = Math.atan2(st.panicDir.x, st.panicDir.z);
+        } else {
+          const target = st.dir === 1 ? st.pB : st.pA;
+          const dx = target.x - st.group.position.x, dz = target.z - st.group.position.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist < 0.4) { st.dir *= -1; }
+          else {
+            st.group.position.x += (dx / dist) * spd * dt;
+            st.group.position.z += (dz / dist) * spd * dt;
+            st.group.rotation.y = Math.atan2(dx, dz);
+          }
+        }
+        const swing = Math.sin(time * (st.panicTime > 0 ? 15 : 8) + st.phase) * (st.panicTime > 0 ? 0.75 : 0.45);
+        st.legL.rotation.x = swing; st.legR.rotation.x = -swing;
+        st.armL.rotation.x = -swing * 0.8; st.armR.rotation.x = swing * 0.8;
+      });
+
+      for (let i = activeProjectiles.length - 1; i >= 0; i--) {
+        const p = activeProjectiles[i];
+        p.progress += dt * p.speed;
+        p.mesh.position.lerpVectors(p.start, p.end, Math.min(1, p.progress));
+        p.mesh.rotation.x += dt * 7; p.mesh.rotation.y += dt * 5;
+        if (Math.random() < 0.55) spawnSmokeOrFire(p.mesh.position, true);
+        if (p.progress >= 1) { scene.remove(p.mesh); p.onImpact(); activeProjectiles.splice(i, 1); }
+      }
+
+      for (let i = activeEffects.length - 1; i >= 0; i--) {
+        const ef = activeEffects[i]; ef.life -= dt;
+        ef.update(dt, Math.max(0, ef.life / ef.maxLife));
+        if (ef.life <= 0) { scene.remove(ef.mesh); activeEffects.splice(i, 1); }
+      }
+
+      for (let i = debrisParticles.length - 1; i >= 0; i--) {
+        const dp = debrisParticles[i]; dp.life -= dt; dp.vel.y -= 34 * dt;
+        dp.mesh.position.addScaledVector(dp.vel, dt);
+        dp.mesh.rotation.x += dp.rotVel.x * dt; dp.mesh.rotation.y += dp.rotVel.y * dt;
+        if (dp.mesh.position.y < 0.35) { dp.mesh.position.y = 0.35; dp.vel.y *= -0.42; dp.vel.x *= 0.72; dp.vel.z *= 0.72; }
+        if (dp.life <= 0) { scene.remove(dp.mesh); debrisParticles.splice(i, 1); }
+      }
+
+      for (let i = smokeParticles.length - 1; i >= 0; i--) {
+        const sp = smokeParticles[i]; sp.life -= dt; sp.mesh.position.y += sp.velY * dt;
+        sp.mesh.scale.multiplyScalar(1 + dt * 0.6);
+        sp.mesh.material.opacity = Math.max(0, (sp.life / sp.maxLife) * (sp.isFire ? 0.85 : 0.45));
+        if (sp.life <= 0) { scene.remove(sp.mesh); smokeParticles.splice(i, 1); }
+      }
+
+      Object.values(destructibles).forEach((d) => {
+        if (d.destroyed && d.countInProgress && Math.random() < 0.06) spawnSmokeOrFire(d.center, Math.random() < 0.35);
+      });
+
+      if (selectionRing && selectionRing.visible) {
+        const s = 1 + Math.sin(time * 3.5) * 0.04;
+        selectionRing.scale.set(s, s, 1);
+      }
+      if (schoolBusGroup && destructibles.bus && !destructibles.bus.destroyed) {
+        schoolBusGroup.position.y = 0.18 + Math.sin(time * 5.5) * 0.015;
+      }
+
+      controls.update();
+      updateOverlays();
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('load', init);
+    if (document.readyState === 'complete') init();
+  </script>
+</body>
+</html>
